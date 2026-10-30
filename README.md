@@ -1,0 +1,94 @@
+# PocketAgent
+
+An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls back to remote APIs (OpenAI-compatible, OpenRouter, Anthropic), and pulls **live web results** through DuckDuckGo or SearXNG. Kotlin + Jetpack Compose, dark UI, floating agent terminal that streams the model's thoughts, tool calls and observations.
+
+- **Wit mode**: bold, funny, opinionated persona (editable `soul.md`), searches when facts may be stale.
+- **Research mode**: sober, thorough, opens sources and cites them.
+- **Reason → Act → Observe loop**: the model emits `<tool_call>{"name": ..., "arguments": {...}}</tool_call>`; generation is frozen at the closing tag, the tool runs, and its raw output goes back as an `[Observation]` turn until the model answers without a tool call.
+
+## Get the APK
+
+Every push to `main` builds a signed arm64-v8a APK in GitHub Actions and publishes it under **Releases** (tag `build-N`). On your phone:
+
+1. Open the repo's **Releases** page, download `PocketAgent-N-arm64.apk`.
+2. Open it and allow *Install unknown apps* for your browser / file manager.
+3. In the app: **Settings → Download from Hugging Face**, keep the default `bartowski/Qwen2.5-1.5B-Instruct-GGUF`, tap *List files*, download the `Q4_K_M` file, then *Load* it. Or add an API key under *Remote endpoint*.
+
+Requirements: Android 9+ on a 64-bit ARM CPU. 4 GB RAM runs 0.5B–1.5B Q4 models comfortably; 8 GB+ handles 3B–4B.
+
+### Stable signing (so updates install over the old version)
+CI signs with a cached debug key by default. For a permanent key, create one and add four repo secrets:
+```bash
+keytool -genkeypair -v -keystore release.jks -alias pocketagent -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 release.jks   # paste into secret POCKETAGENT_KEYSTORE_BASE64
+```
+plus `POCKETAGENT_KEYSTORE_PASSWORD`, `POCKETAGENT_KEY_ALIAS`, `POCKETAGENT_KEY_PASSWORD`.
+
+## Project layout
+```
+PocketAgent/
+├── settings.gradle.kts            # repos; :app is skipped automatically when no Android SDK exists
+├── build.gradle.kts
+├── gradle/libs.versions.toml      # AGP 8.7.3, Kotlin 2.1.0, Compose BOM 2024.12.01, Room 2.6.1, WorkManager 2.10
+├── agent-core/                    # pure Kotlin/JVM, unit-tested on any JDK
+│   └── src/main/kotlin/dev/pocketagent/core/
+│       ├── llm/LLMProvider.kt         # Flow<LlmEvent> contract
+│       ├── llm/ProviderScheduler.kt   # local/remote routing with fallback
+│       ├── llm/RemoteApiEngine.kt     # OpenAI-compatible / OpenRouter / Anthropic SSE streaming
+│       ├── llm/LlamaBridge.kt         # JNI surface for libagentnative
+│       ├── llm/GgufMetadataReader.kt  # reads GGUF headers for RAM planning
+│       ├── llm/HuggingFaceClient.kt   # search, list .gguf, resumable downloads
+│       ├── agent/AgentLoop.kt         # Reason-Act-Observe orchestrator
+│       ├── agent/ToolCallParser.kt    # streaming <think>/<tool_call> splitter
+│       ├── agent/PersonaManager.kt    # soul.md + system prompt assembly
+│       └── tools/WebSearchTool.kt, FetchPageTool.kt, UtilityTools.kt
+├── app/
+│   ├── build.gradle.kts           # Compose M3, Room, WorkManager, OkHttp, EncryptedSharedPreferences, NDK arm64-v8a
+│   └── src/main/
+│       ├── AndroidManifest.xml
+│       ├── cpp/CMakeLists.txt, llama_jni.cpp   # llama.cpp bridge (prefix-cached KV, UTF-8 safe streaming)
+│       └── java/dev/pocketagent/
+│           ├── llm/LocalGgufEngine.kt         # RAM check, context planning, single-thread native worker
+│           ├── llm/ModelDownloadManager.kt    # WorkManager foreground downloads with progress
+│           ├── agent/AgentSessionController.kt
+│           ├── data/AppDatabase.kt, SecureSettings.kt
+│           ├── service/AgentForegroundService.kt
+│           └── ui/ChatScreen.kt, SettingsSheet.kt, ChatViewModel.kt, theme/Theme.kt
+├── scripts/setup.sh, setup.ps1
+└── .github/workflows/android.yml  # tests + APK + GitHub Release
+```
+
+## Build from source
+
+The NDK and aapt2 that Google ships are x86_64-only on Linux, so **local builds need an x86_64 Linux, macOS or Windows machine**. On ARM devices, push to GitHub and let Actions build.
+
+| Platform | Steps |
+|---|---|
+| **Linux (Ubuntu/Xubuntu, x86_64)** | `sudo apt install -y openjdk-17-jdk git unzip curl` → `./scripts/setup.sh` → `./gradlew :app:assembleRelease` |
+| **Windows 10/11** | `winget install EclipseAdoptium.Temurin.17.JDK Git.Git` → `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` → `.\gradlew.bat :app:assembleRelease` |
+| **Chromebook (Crostini)** | Intel/AMD Chromebooks: same as Linux. ARM Chromebooks: build via GitHub Actions. Install the APK by opening it from the Files app (Play Store-enabled devices) or `adb install` after enabling ADB in Linux settings. |
+| **Android (Termux)** | Building Android apps on-device isn't reliable (no ARM64 aapt2/NDK from Google). Use the Release APK. Termux is handy for testing the core: `pkg install openjdk-17 git` → `./gradlew :agent-core:test`. |
+
+Install over USB: `adb install -r app/build/outputs/apk/release/app-release.apk`.
+
+Push a model without downloading in-app:
+```bash
+adb push model.gguf /sdcard/Android/data/dev.pocketagent/files/models/
+```
+
+## Testing
+
+```bash
+./gradlew :agent-core:test        # parser, agent loop, SSE parsing, DDG scraping, resumable downloads
+```
+The JNI bridge can be tested on a desktop JVM against a host build of `libagentnative`:
+```bash
+git clone --depth 1 --branch b12017 https://github.com/ggml-org/llama.cpp app/src/main/cpp/llama.cpp
+cmake -S app/src/main/cpp -B build-host -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build-host
+./gradlew :agent-core:test -Dpocketagent.nativeLib=$PWD/build-host/libagentnative.so -Dpocketagent.testModel=/path/model.gguf
+```
+
+## Notes
+- API keys and the Hugging Face token are stored with EncryptedSharedPreferences (Keystore-backed AES-256). Anthropic uses the `x-api-key` header; OpenAI/OpenRouter use `Authorization: Bearer`.
+- Local models get no image input; screenshots/images are only sent to remote vision models.
+- On-device screen control (Accessibility/Shizuku) is not part of this build.

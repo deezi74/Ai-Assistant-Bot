@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PocketAgent</string>
+    <string name="notif_channel_agent">Agent sessions</string>
+    <string name="notif_channel_downloads">Model downloads</string>
+    <string name="notif_agent_running">Agent is working</string>
+    <string name="notif_download_title">Downloading model</string>
+    <string name="action_stop">Stop</string>
+</resources>
