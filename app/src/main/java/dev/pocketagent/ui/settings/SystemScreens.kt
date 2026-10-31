@@ -71,6 +71,8 @@ import dev.pocketagent.ui.SwitchRow
 import dev.pocketagent.ui.formatBytes
 import dev.pocketagent.ui.openUrl
 import dev.pocketagent.ui.theme.Accents
+import dev.pocketagent.ui.theme.Backgrounds
+import dev.pocketagent.ui.theme.TextColors
 import dev.pocketagent.ui.theme.Mono
 import dev.pocketagent.ui.theme.Palette
 import java.io.File
@@ -404,7 +406,52 @@ fun AppearanceScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                 }
             }
         }
-        SwitchRow("Pure black background", "Saves battery on OLED screens", settings.amoled) { c -> viewModel.updateSettings { it.copy(amoled = c) } }
+        SectionTitle("Background")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Backgrounds.forEach { b ->
+                val selected = settings.background == b.id
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.updateSettings { it.copy(background = b.id) } }) {
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(b.background)
+                            .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Accent else Palette.Outline, CircleShape)
+                    )
+                    Text(b.label, style = MaterialTheme.typography.bodySmall, color = if (selected) Palette.Text else Palette.TextMuted)
+                }
+            }
+        }
+        SectionTitle("Text colour")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextColors.forEach { t ->
+                val selected = settings.textColor == t.id
+                val swatch = t.color ?: if (Palette.IsLight) Color(0xFF15171B) else Color(0xFFECEEF1)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.updateSettings { it.copy(textColor = t.id) } }) {
+                    Box(
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Palette.Surface)
+                            .border(if (selected) 3.dp else 1.dp, if (selected) Palette.Accent else Palette.Outline, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("Aa", color = swatch, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Text(t.label, style = MaterialTheme.typography.bodySmall, color = if (selected) Palette.Text else Palette.TextMuted)
+                }
+            }
+        }
+        SectionTitle("Preview")
+        SurfaceCard {
+            Text("${settings.assistantName}", style = MaterialTheme.typography.titleMedium)
+            Text("This is how messages, labels and buttons will look.", style = MaterialTheme.typography.bodyLarge)
+            Hint("Secondary text like timestamps and hints looks like this.")
+            Text("Accent", color = Palette.Accent, style = MaterialTheme.typography.labelSmall)
+        }
+        OutlinedButton(onClick = {
+            viewModel.updateSettings { it.copy(accent = "ember", background = "black", textColor = "auto", fontScale = 1f) }
+        }) { Text("Reset to default") }
         LabeledSlider("Text size", settings.fontScale, 0.85f..1.3f, "${(settings.fontScale * 100).toInt()}%") { v ->
             viewModel.updateSettings { it.copy(fontScale = (v * 20).toInt() / 20f) }
         }
@@ -561,4 +608,51 @@ fun PrivacyScreen(onBack: () -> Unit) {
 
 private fun copy(context: Context, text: String) {
     context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("PocketAgent", text))
+}
+
+@Composable
+fun PhoneControlsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val tick = rememberResumeTick()
+    val canWrite = remember(tick) { Settings.System.canWrite(context) }
+    val dndAccess = remember(tick) {
+        context.getSystemService(android.app.NotificationManager::class.java).isNotificationPolicyAccessGranted
+    }
+    SubScreen("Phone controls", onBack) {
+        SwitchRow(
+            "Let ${settings.assistantName} control the phone",
+            "Uses the phone tool when you ask, for example \"turn on the flashlight\"",
+            settings.phoneControl
+        ) { c -> viewModel.updateSettings { it.copy(phoneControl = c) } }
+        SectionTitle("Works right away")
+        Hint("Flashlight on/off, media and ringer volume, alarms and timers, opening any app by name, Wi-Fi/Bluetooth/internet panels, play/pause/skip music, battery level, copying text, opening maps and links. Calls and texts open as drafts and you press call or send.")
+        SectionTitle("Needs one-time permission")
+        PermissionCard("Screen brightness", "Modify system settings", canWrite) {
+            startSafely(context, Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}")))
+        }
+        PermissionCard("Do Not Disturb", "Do Not Disturb access", dndAccess) {
+            startSafely(context, Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+        }
+        SectionTitle("Try saying")
+        listOf(
+            "Turn the flashlight on",
+            "Set a timer for 10 minutes",
+            "Wake me up at 6:30",
+            "Turn the volume down to 30%",
+            "Open Spotify",
+            "Skip this song",
+            "Turn on Do Not Disturb"
+        ).forEach { example ->
+            Text(
+                "“$example”",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { viewModel.prefill(example) }
+                    .padding(vertical = 6.dp)
+            )
+        }
+        Hint("Android does not let normal apps flip Wi-Fi, Bluetooth or airplane mode directly, so for those the assistant opens the quick panel for you. Tapping and typing inside other apps is not part of this build.")
+    }
 }

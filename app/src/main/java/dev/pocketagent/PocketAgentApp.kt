@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.os.Build
 import dev.pocketagent.agent.AgentRunner
 import dev.pocketagent.agent.AgentSessionController
+import dev.pocketagent.agent.PhoneTool
 import dev.pocketagent.agent.SharedFolderTool
 import dev.pocketagent.core.agent.AgentMode
 import dev.pocketagent.core.agent.PersonaManager
@@ -107,6 +108,7 @@ class AppContainer(val app: PocketAgentApp) {
             OnlineOnlyTool(FetchPageTool(), offline),
             CurrentTimeTool(),
             SharedFolderTool(app, workspace),
+            PhoneTool(app) { settings.current.phoneControl },
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },
             TrackGoalTool { title, note, category ->

@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -51,12 +52,15 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val settings = viewModel.settings.value
-        Palette.apply(settings.accent, settings.amoled)
+        Palette.apply(settings.accent, settings.background, settings.textColor)
         unlocked = !settings.appLock || savedInstanceState?.getBoolean(KEY_UNLOCKED) == true
 
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.CREATED) {
-                viewModel.settings.collect { Palette.apply(it.accent, it.amoled) }
+                viewModel.settings.collect {
+                    Palette.apply(it.accent, it.background, it.textColor)
+                    applySystemBars()
+                }
             }
         }
 
@@ -77,6 +81,21 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    private var barsLight: Boolean? = null
+
+    /** Dark status-bar icons on the light background, light icons otherwise. */
+    private fun applySystemBars() {
+        val light = Palette.IsLight
+        if (barsLight == light) return
+        barsLight = light
+        val style = if (light) {
+            SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        } else {
+            SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+        }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
     }
 
     override fun onNewIntent(intent: Intent) {

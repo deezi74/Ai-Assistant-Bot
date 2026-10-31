@@ -43,6 +43,11 @@ data class AppSettings(
     val feedIntroDismissed: Boolean = false,
     val accent: String = "ember",
     val amoled: Boolean = true,
+    /** Ids from Backgrounds / TextColors in ui.theme. */
+    val background: String = "black",
+    val textColor: String = "auto",
+    /** Lets the assistant use the phone tool (flashlight, volume, alarms, opening apps). */
+    val phoneControl: Boolean = true,
     val fontScale: Float = 1.0f,
     val appLock: Boolean = false,
     val wifiOnlyDownloads: Boolean = false,
@@ -125,6 +130,9 @@ class SecureSettings(context: Context) : CredentialStore {
             feedIntroDismissed = prefs.getBoolean("feed_intro_dismissed", d.feedIntroDismissed),
             accent = prefs.getString("accent", null) ?: d.accent,
             amoled = prefs.getBoolean("amoled", d.amoled),
+            background = prefs.getString("background", null) ?: if (prefs.getBoolean("amoled", true)) "black" else "charcoal",
+            textColor = prefs.getString("text_color", null) ?: d.textColor,
+            phoneControl = prefs.getBoolean("phone_control", d.phoneControl),
             fontScale = prefs.getFloat("font_scale", d.fontScale),
             appLock = prefs.getBoolean("app_lock", d.appLock),
             wifiOnlyDownloads = prefs.getBoolean("wifi_only_downloads", d.wifiOnlyDownloads),
@@ -161,6 +169,9 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("feed_intro_dismissed", next.feedIntroDismissed)
             .putString("accent", next.accent)
             .putBoolean("amoled", next.amoled)
+            .putString("background", next.background)
+            .putString("text_color", next.textColor)
+            .putBoolean("phone_control", next.phoneControl)
             .putFloat("font_scale", next.fontScale)
             .putBoolean("app_lock", next.appLock)
             .putBoolean("wifi_only_downloads", next.wifiOnlyDownloads)

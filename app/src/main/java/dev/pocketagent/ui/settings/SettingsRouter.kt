@@ -69,11 +69,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "files" -> SystemFilesScreen(viewModel, back)
             "skills" -> SkillsScreen(viewModel, back)
             "connectors" -> ConnectorsScreen(viewModel, back)
-            "hands" -> NotInThisBuildScreen(
-                "Hands", back,
-                "Hands would let the assistant tap and type in other apps on this phone.",
-                "That capability is not part of this build. PocketAgent only acts through its own tools: web search, page reading, your Library, memory, goals and folders you share."
-            )
+            "hands", "phone" -> PhoneControlsScreen(viewModel, back)
             "computers" -> NotInThisBuildScreen(
                 "Computers", back,
                 "Computers would pair a desktop so the assistant can run tasks there.",
@@ -136,7 +132,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
 
         SectionTitle("Abilities")
         SettingRow(Icons.Filled.Cable, "Connectors", "Web search, Hugging Face, providers", onClick = { go("connectors") })
-        SettingRow(Icons.Filled.PanTool, "Hands", "Not in this build", tint = Palette.TextMuted, onClick = { go("hands") })
+        SettingRow(Icons.Filled.PanTool, "Phone controls", if (settings.phoneControl) "Flashlight, volume, alarms, apps" else "Off", onClick = { go("phone") })
         SettingRow(Icons.Filled.Computer, "Computers", "Not in this build", tint = Palette.TextMuted, onClick = { go("computers") })
         SettingRow(Icons.Filled.Code, "Coding agents", "Not in this build", tint = Palette.TextMuted, onClick = { go("coding") })
         SettingRow(Icons.Filled.Key, "Environment variables", if (env.isEmpty()) "None" else "${env.size} set", onClick = { go("env") })
@@ -150,7 +146,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Backup, "Backup & restore", "Export everything except keys", onClick = { go("backup") })
 
         SectionTitle("App")
-        SettingRow(Icons.Filled.Palette, "Appearance", "Accent, black theme, text size", onClick = { go("appearance") })
+        SettingRow(Icons.Filled.Palette, "Appearance", "Colours, background, text size", onClick = { go("appearance") })
         SettingRow(Icons.Filled.DataUsage, "Data controls", "Delete chats, feed, memory", onClick = { go("data") })
         SettingRow(Icons.Filled.Wifi, "Network", if (settings.offlineMode) "Offline mode on" else "Search, Wi-Fi only downloads", onClick = { go("network") })
         SettingRow(Icons.Filled.Terminal, "Logs", "What the agent did", onClick = { go("logs") })

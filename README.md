@@ -15,7 +15,9 @@ An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls 
 - **Goals**: tracked goals (the assistant can add them with the `track_goal` tool), routines that run a prompt on a schedule and save the result to the Library, and goal categories to start a conversation.
 - **Library**: artifacts the assistant saves with `save_artifact`, your own notes, and media. Share or delete any file.
 - **Settings**: Models, Manage providers, Token usage, Soul, Memory, Skills, System files, Connectors, Environment variables (`$NAME` in tool arguments), Permissions, Background & notifications, Storage, Shared folders, Mount external folders (read-only `shared_files` tool), Backup & restore (zip without secrets), Appearance (accent, pure black, text size), Data controls, Network (offline mode, Wi-Fi-only downloads), Logs, App lock, Set as default assistant, About, Privacy policy.
-- Hands, Computers and Coding agents are listed but not available in this build.
+- **Phone controls** (`phone` tool): flashlight, volume, brightness, Do Not Disturb, alarms and timers, opening apps by name, settings panels, media keys, battery, clipboard, maps/links, and call/SMS drafts the user confirms. Toggle and one-time permissions in Settings ▸ Phone controls.
+- **Appearance**: accent, six backgrounds including a light one, and eight text colours.
+- Computers and Coding agents are listed but not available in this build.
 
 Upgrading from 1.1.0 resets chat history once because the database layout changed.
 
