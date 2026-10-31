@@ -24,7 +24,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Cameraswitch
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material3.FilledIconButton
@@ -38,12 +41,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.foundation.shape.RoundedCornerShape
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -66,7 +72,7 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val avatarVersion by viewModel.avatarVersion.collectAsStateWithLifecycle()
-    val speaker = remember { Speaker(context) }
+    val speaker = remember { Speaker(context, viewModel.cloudVoice) }
     val listener = remember { Listener(context) }
     val heard by listener.state.collectAsStateWithLifecycle()
     var phase by remember { mutableStateOf(Phase.PAUSED) }
@@ -74,6 +80,18 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
     var quietTries by remember { mutableIntStateOf(0) }
     var note by remember { mutableStateOf<String?>(null) }
     var lastReply by remember { mutableStateOf("") }
+    var cameraOn by remember { mutableStateOf(false) }
+    var frontCamera by remember { mutableStateOf(false) }
+    val camera = remember { LiveCameraState() }
+    val scope = rememberCoroutineScope()
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) cameraOn = true else note = "Camera permission is needed for live camera."
+    }
+    fun toggleCamera() {
+        if (cameraOn) cameraOn = false
+        else if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) cameraOn = true
+        else cameraPermission.launch(Manifest.permission.CAMERA)
+    }
 
     fun listen() {
         speaker.stop()
@@ -111,7 +129,16 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
                 listener.stop()
                 phase = Phase.THINKING
                 sentAt = chat.items.size
-                viewModel.send(h.text)
+                if (cameraOn) {
+                    // Live camera: send what the camera sees with the question.
+                    scope.launch {
+                        val frame = camera.snap(viewModel.workspace.mediaDir)
+                        sentAt = chat.items.size
+                        viewModel.sendWithImage(h.text, frame)
+                    }
+                } else {
+                    viewModel.send(h.text)
+                }
             }
             is Listener.State.Failed -> if (phase == Phase.LISTENING) {
                 if (h.silent && quietTries < 2) {
@@ -156,6 +183,18 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
                 colors = IconButtonDefaults.filledIconButtonColors(containerColor = Palette.SurfaceHigh, contentColor = Palette.Text)
             ) { Icon(Icons.Filled.Close, "Close voice mode") }
         }
+        if (cameraOn) {
+            Spacer(Modifier.height(8.dp))
+            Box(Modifier.fillMaxWidth().weight(3f).clip(RoundedCornerShape(24.dp))) {
+                LiveCamera(camera, frontCamera, Modifier.fillMaxSize())
+                FilledIconButton(
+                    onClick = { frontCamera = !frontCamera },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(8.dp),
+                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.Black.copy(alpha = 0.5f), contentColor = Color.White)
+                ) { Icon(Icons.Filled.Cameraswitch, "Switch camera") }
+            }
+            Spacer(Modifier.height(12.dp))
+        }
         Spacer(Modifier.weight(1f))
         Box(
             Modifier
@@ -166,7 +205,7 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
         ) {
             ActivityAvatar(
                 settings.avatarKind, settings.avatarValue, settings.assistantName,
-                viewModel.avatarPhoto(settings), 180.dp,
+                viewModel.avatarPhoto(settings), if (cameraOn) 96.dp else 180.dp,
                 activity = when (phase) {
                     Phase.THINKING -> chat.activity ?: "thinking"
                     else -> chat.activity
@@ -200,6 +239,15 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
             maxLines = 8
         )
         Spacer(Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+        FilledIconButton(
+            onClick = { toggleCamera() },
+            modifier = Modifier.size(56.dp),
+            colors = IconButtonDefaults.filledIconButtonColors(
+                containerColor = if (cameraOn) Palette.Accent else Palette.SurfaceHigh,
+                contentColor = if (cameraOn) Color.Black else Palette.Text
+            )
+        ) { Icon(if (cameraOn) Icons.Filled.Videocam else Icons.Filled.VideocamOff, if (cameraOn) "Turn camera off" else "Show me with the camera") }
         FilledIconButton(
             onClick = {
                 if (phase == Phase.LISTENING) {
@@ -215,7 +263,9 @@ fun VoiceMode(viewModel: AppViewModel, onClose: () -> Unit) {
                 contentColor = if (phase == Phase.LISTENING) Color.Black else Palette.Text
             )
         ) { Icon(if (phase == Phase.LISTENING) Icons.Filled.Mic else Icons.Filled.MicOff, "Talk") }
+        Spacer(Modifier.size(56.dp))
+        }
         Spacer(Modifier.height(8.dp))
-        Text("Hands-free: it listens again after each answer", style = MaterialTheme.typography.labelSmall, color = Palette.TextMuted)
+        Text(if (cameraOn) "Live camera: it sees what you show it each time you talk (needs a model that can see images)" else "Hands-free: it listens again after each answer", style = MaterialTheme.typography.labelSmall, color = Palette.TextMuted)
     }
 }

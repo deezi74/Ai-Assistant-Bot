@@ -8,13 +8,29 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import dev.pocketagent.agent.CloudVoice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
-/** Text-to-speech for replies; splits long text so the engine's length limit never cuts it off. */
-class Speaker(context: Context) {
+/**
+ * Speaks replies. With a cloud voice picked (Settings ▸ Voice) it streams natural
+ * MP3 speech sentence by sentence, fetching the next part while the current one
+ * plays; otherwise, or if the cloud voice fails, it uses the phone's TTS engine.
+ */
+class Speaker(context: Context, private val cloud: CloudVoice? = null) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var cloudJob: Job? = null
+    private var player: android.media.MediaPlayer? = null
     private val _speaking = MutableStateFlow(false)
     val speaking: StateFlow<Boolean> = _speaking.asStateFlow()
     private var ready = false
@@ -72,6 +88,73 @@ class Speaker(context: Context) {
             done()
             return
         }
+        if (cloud != null && cloud.active()) {
+            speakCloud(clean, done)
+            return
+        }
+        speakPhone(clean, done)
+    }
+
+    private fun speakCloud(clean: String, done: () -> Unit) {
+        stop()
+        val parts = sentences(clean)
+        cloudJob = scope.launch {
+            _speaking.value = true
+            var spoken = 0
+            try {
+                var next = async(Dispatchers.IO) { cloud!!.synthesize(parts[0]) }
+                for (i in parts.indices) {
+                    val file = next.await()
+                    if (i + 1 < parts.size) next = async(Dispatchers.IO) { cloud!!.synthesize(parts[i + 1]) }
+                    play(file)
+                    file.delete()
+                    spoken = i + 1
+                }
+                _speaking.value = false
+                done()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                _speaking.value = false
+                throw e
+            } catch (e: Exception) {
+                // Cloud voice failed (no network, bad key): finish with the phone's voice.
+                val rest = parts.drop(spoken).joinToString(" ")
+                if (rest.isBlank()) {
+                    _speaking.value = false
+                    done()
+                } else {
+                    speakPhone(rest, done)
+                }
+            }
+        }
+    }
+
+    private suspend fun play(file: java.io.File) = suspendCancellableCoroutine { cont ->
+        val mp = android.media.MediaPlayer()
+        player = mp
+        cont.invokeOnCancellation { runCatching { mp.stop() }; mp.release(); if (player === mp) player = null }
+        try {
+            mp.setDataSource(file.absolutePath)
+            mp.setOnCompletionListener {
+                it.release()
+                if (player === it) player = null
+                if (cont.isActive) cont.resumeWith(Result.success(Unit))
+            }
+            mp.setOnErrorListener { m, what, _ ->
+                m.release()
+                if (player === m) player = null
+                if (cont.isActive) cont.resumeWith(Result.failure(IllegalStateException("playback error $what")))
+                true
+            }
+            mp.setOnPreparedListener { it.start() }
+            mp.prepareAsync()
+        } catch (e: Exception) {
+            mp.release()
+            if (player === mp) player = null
+            if (cont.isActive) cont.resumeWith(Result.failure(e))
+        }
+    }
+
+    private fun speakPhone(clean: String, done: () -> Unit) {
         if (!ready) {
             pending = clean to done
             return
@@ -90,12 +173,17 @@ class Speaker(context: Context) {
     fun stop() {
         onDone = null
         pending = null
+        cloudJob?.cancel()
+        cloudJob = null
+        player?.let { runCatching { it.stop() }; it.release() }
+        player = null
         tts.stop()
         _speaking.value = false
     }
 
     fun shutdown() {
         stop()
+        scope.cancel()
         tts.shutdown()
     }
 
@@ -110,6 +198,27 @@ class Speaker(context: Context) {
             .replace(Regex("^\\s*[-•]\\s+", RegexOption.MULTILINE), "")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+        /**
+         * Splits text into parts for the cloud voice: a short first part so speech
+         * starts fast, then about 350 characters each, cut at sentence ends.
+         */
+        fun sentences(text: String): List<String> {
+            val pieces = Regex("(?<=[.!?])\\s+").split(text).filter { it.isNotBlank() }
+            val out = ArrayList<String>()
+            val cur = StringBuilder()
+            for (p in pieces) {
+                val limit = if (out.isEmpty()) 140 else 350
+                if (cur.isNotEmpty() && cur.length + p.length + 1 > limit) {
+                    out += cur.toString()
+                    cur.clear()
+                }
+                if (cur.isNotEmpty()) cur.append(' ')
+                cur.append(p)
+            }
+            if (cur.isNotEmpty()) out += cur.toString()
+            return out.flatMap { if (it.length > 3500) chunk(it) else listOf(it) }.ifEmpty { listOf(text) }
+        }
 
         private fun chunk(text: String, max: Int = 3500): List<String> {
             if (text.length <= max) return listOf(text)

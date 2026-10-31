@@ -76,6 +76,10 @@ data class AppSettings(
     val videoSource: String = "auto",
     val videoModelGemini: String = "",
     val videoModelPollinations: String = "",
+    /** "phone", "openai", "openrouter" or "elevenlabs": who speaks replies aloud. */
+    val voiceProvider: String = "phone",
+    /** OpenAI-style voice name, or an ElevenLabs voice ID. */
+    val voiceName: String = "",
     val fontScale: Float = 1.0f,
     val appLock: Boolean = false,
     val wifiOnlyDownloads: Boolean = false,
@@ -176,6 +180,8 @@ class SecureSettings(context: Context) : CredentialStore {
             videoSource = prefs.getString("video_source", null) ?: d.videoSource,
             videoModelGemini = prefs.getString("video_model_gemini", null) ?: d.videoModelGemini,
             videoModelPollinations = prefs.getString("video_model_pollinations", null) ?: d.videoModelPollinations,
+            voiceProvider = prefs.getString("voice_provider", null) ?: d.voiceProvider,
+            voiceName = prefs.getString("voice_name", null) ?: d.voiceName,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
             appLock = prefs.getBoolean("app_lock", d.appLock),
             wifiOnlyDownloads = prefs.getBoolean("wifi_only_downloads", d.wifiOnlyDownloads),
@@ -230,6 +236,8 @@ class SecureSettings(context: Context) : CredentialStore {
             .putString("video_source", next.videoSource)
             .putString("video_model_gemini", next.videoModelGemini)
             .putString("video_model_pollinations", next.videoModelPollinations)
+            .putString("voice_provider", next.voiceProvider)
+            .putString("voice_name", next.voiceName)
             .putFloat("font_scale", next.fontScale)
             .putBoolean("app_lock", next.appLock)
             .putBoolean("wifi_only_downloads", next.wifiOnlyDownloads)
@@ -268,6 +276,11 @@ class SecureSettings(context: Context) : CredentialStore {
     var geminiKey: String?
         get() = secret("token_gemini")
         set(value) = putSecret("token_gemini", value)
+
+    /** ElevenLabs key for natural voices. */
+    var elevenLabsKey: String?
+        get() = secret("token_elevenlabs")
+        set(value) = putSecret("token_elevenlabs", value)
 
     var googlePlacesKey: String?
         get() = secret("token_google_places")

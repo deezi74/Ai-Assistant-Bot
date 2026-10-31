@@ -185,6 +185,16 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
         ) { viewModel.push("google") }
         ConnectorCard(
+            "Voice",
+            when (settings.voiceProvider) {
+                "openai" -> "Natural voice · OpenAI"
+                "openrouter" -> "Natural voice · OpenRouter"
+                "elevenlabs" -> "Natural voice · ElevenLabs"
+                else -> "Phone voice · pick a natural voice"
+            },
+            connected = viewModel.cloudVoice.active(), action = "Set up"
+        ) { viewModel.push("voice") }
+        ConnectorCard(
             "Photos & videos",
             when {
                 viewModel.hasGeminiKey && viewModel.hasPollinationsToken -> "AI photos and videos · Gemini and Pollinations keys"
@@ -355,6 +365,62 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             "What's the weather this afternoon?"
         ).forEach { example ->
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun VoiceSettingsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var tick by remember { mutableIntStateOf(0) }
+    val options = remember(tick) { viewModel.cloudVoice.options() }
+    val hasEleven = remember(tick) { viewModel.hasElevenLabsKey }
+    var key by remember { mutableStateOf("") }
+    val speaker = remember { dev.pocketagent.ui.Speaker(context, viewModel.cloudVoice) }
+    DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
+
+    SubScreen("Voice", onBack) {
+        Hint("Pick who reads replies aloud in voice mode and with the speaker button. Natural voices use your own key and need a connection; if one fails it falls back to the phone voice.")
+        SectionTitle("Voice service")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { o ->
+                androidx.compose.material3.FilterChip(
+                    selected = settings.voiceProvider == o.id || (o.id == "phone" && options.none { it.id == settings.voiceProvider }),
+                    onClick = { viewModel.updateSettings { it.copy(voiceProvider = o.id, voiceName = o.voices.firstOrNull()?.first.orEmpty()) } },
+                    label = { Text(o.label) }
+                )
+            }
+        }
+        if (options.size == 1) Hint("Add an OpenAI or OpenRouter key in Manage providers, or an ElevenLabs key below, to unlock natural voices.")
+        options.firstOrNull { it.id == settings.voiceProvider }?.takeIf { it.voices.isNotEmpty() }?.let { o ->
+            SectionTitle("Voice")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                o.voices.forEach { (id, label) ->
+                    androidx.compose.material3.FilterChip(
+                        selected = settings.voiceName == id,
+                        onClick = { viewModel.updateSettings { it.copy(voiceName = id) } },
+                        label = { Text(label) }
+                    )
+                }
+            }
+        }
+        OutlinedButton(onClick = {
+            speaker.speak("Hey, it's ${settings.assistantName}. This is how I sound now. Pretty good, right?")
+        }) { Text("Test the voice") }
+
+        SectionTitle("ElevenLabs")
+        Hint("ElevenLabs has very lifelike voices and a free monthly allowance.")
+        OutlinedButton(onClick = { openUrl(context, "https://elevenlabs.io/app/settings/api-keys") }) { Text("Get an ElevenLabs key") }
+        SecretField(key, { key = it.trim() }, if (hasEleven) "ElevenLabs key (saved)" else "ElevenLabs API key")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { viewModel.saveElevenLabsKey(key); key = ""; tick++ },
+                enabled = key.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+            ) { Text("Save") }
+            if (hasEleven) OutlinedButton(onClick = { viewModel.saveElevenLabsKey(null); tick++ }) { Text("Remove") }
         }
     }
 }

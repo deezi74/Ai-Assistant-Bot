@@ -718,6 +718,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val hasPollinationsToken: Boolean get() = !container.settings.pollinationsToken.isNullOrBlank()
+    val cloudVoice: dev.pocketagent.agent.CloudVoice get() = container.voice
+    val hasElevenLabsKey: Boolean get() = !container.settings.elevenLabsKey.isNullOrBlank()
+    fun saveElevenLabsKey(key: String?) {
+        container.settings.elevenLabsKey = key
+        if (key.isNullOrBlank() && settings.value.voiceProvider == dev.pocketagent.agent.CloudVoice.ELEVENLABS) updateSettings { it.copy(voiceProvider = "phone") }
+        toast(if (key.isNullOrBlank()) "ElevenLabs key removed" else "ElevenLabs key saved (encrypted, not included in backups)")
+    }
+
+    /** Sends a voice-mode turn with a frame from the live camera. */
+    fun sendWithImage(text: String, image: File?) {
+        container.session.send(text, settings.value.mode, image)
+    }
+
     val hasGeminiKey: Boolean get() = !container.settings.geminiKey.isNullOrBlank()
     fun saveGeminiKey(key: String?) {
         container.settings.geminiKey = key

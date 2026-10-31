@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent"
         minSdk = 28
         targetSdk = 35
-        versionCode = 14
-        versionName = "2.1.0"
+        versionCode = 15
+        versionName = "2.2.0"
 
         // Public OAuth app ID for "Sign in with GitHub" (device flow). Can also be entered in the app.
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"${System.getenv("TRUAGENT_GITHUB_CLIENT_ID") ?: ""}\"")
@@ -170,6 +170,10 @@ dependencies {
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.exifinterface)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 
     // IMAP email connector (app-password sign-in)
     implementation(libs.android.mail)

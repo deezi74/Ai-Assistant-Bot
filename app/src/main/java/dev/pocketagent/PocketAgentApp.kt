@@ -131,6 +131,7 @@ class AppContainer(val app: PocketAgentApp) {
     val computer = ComputerSession(workspace)
     val characters = CharacterGenerator(settings)
     val videos = dev.pocketagent.agent.VideoMaker(settings)
+    val voice = dev.pocketagent.agent.CloudVoice(settings, app.cacheDir)
     val learner = Learner(this)
     val location = DeviceLocation(app) { settings.current.shareLocation }
     val places = PlacesClient(googleKey = { settings.googlePlacesKey })

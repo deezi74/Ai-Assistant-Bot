@@ -115,13 +115,31 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
     var taskMode by rememberSaveable { mutableStateOf(false) }
     var attachMenu by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
-    val speaker = remember { Speaker(context) }
+    val speaker = remember { Speaker(context, viewModel.cloudVoice) }
     val speakingNow by speaker.speaking.collectAsStateWithLifecycle()
     var speakingId by remember { mutableStateOf<Long?>(null) }
     androidx.compose.runtime.DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
     var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
         cameraUri?.let { if (ok) viewModel.attachImage(it) }
+    }
+    // The app declares CAMERA (for live camera in voice mode), so Android requires it to be
+    // granted before another app's camera can be opened too.
+    fun openCamera() {
+        val dir = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+        val file = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+        cameraUri = uri
+        try {
+            camera.launch(uri)
+        } catch (e: ActivityNotFoundException) {
+            viewModel.toast("No camera app found")
+        } catch (e: SecurityException) {
+            viewModel.toast("Camera permission is needed")
+        }
+    }
+    val cameraPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        if (ok) openCamera() else viewModel.toast("Camera permission is needed to take a photo")
     }
     val accent = if (settings.mode == AgentMode.WIT) Palette.Accent else Palette.Research
 
@@ -253,15 +271,9 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                             leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
                             onClick = {
                                 attachMenu = false
-                                val dir = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
-                                val file = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
-                                val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
-                                cameraUri = uri
-                                try {
-                                    camera.launch(uri)
-                                } catch (e: ActivityNotFoundException) {
-                                    viewModel.toast("No camera app found")
-                                }
+                                if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) ==
+                                    android.content.pm.PackageManager.PERMISSION_GRANTED
+                                ) openCamera() else cameraPermission.launch(android.Manifest.permission.CAMERA)
                             }
                         )
                         androidx.compose.material3.DropdownMenuItem(
