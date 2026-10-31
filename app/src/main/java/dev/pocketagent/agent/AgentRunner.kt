@@ -35,7 +35,7 @@ class AgentRunner(private val container: AppContainer) {
      * App-owned system prompt sections, each with a character budget so a growing
      * memory or skill list cannot slow every reply down.
      */
-    suspend fun extraContext(mode: AgentMode = container.settings.current.mode): String {
+    suspend fun extraContext(mode: AgentMode = container.settings.current.mode, request: String = ""): String {
         val s = container.settings.current
         val memory = container.workspace.readMemory().trim()
         val skills = container.workspace.skills().filter { it.enabled }
@@ -54,9 +54,20 @@ class AgentRunner(private val container: AppContainer) {
                 append(newestLines(memory, MEMORY_BUDGET)).append('\n')
             }
             if (skills.isNotEmpty()) {
+                // Every skill is listed by name; the full steps are included only for the
+                // skills this request seems to need (or for all of them with no request),
+                // which keeps the prompt short and replies fast.
+                val words = Regex("[a-z0-9]+").findAll(request.lowercase()).map { it.value }.filter { it.length > 3 }.toSet()
+                fun relevant(skill: dev.pocketagent.data.Skill): Boolean = request.isBlank() ||
+                    Regex("[a-z0-9]+").findAll((skill.name + " " + skill.description).lowercase()).map { it.value }
+                        .any { it.length > 3 && (it in words || words.any { w -> w.startsWith(it) || it.startsWith(w) }) }
                 append("\n## Skills\n")
                 var used = 0
                 for (skill in skills) {
+                    if (!relevant(skill)) {
+                        append("- ").append(skill.name).append(": ").append(skill.description.take(120)).append('\n')
+                        continue
+                    }
                     val body = skill.instructions.trim().let { if (it.length > SKILL_BUDGET) it.take(SKILL_BUDGET) + "…" else it }
                     if (used + body.length > SKILLS_TOTAL_BUDGET) break
                     used += body.length
@@ -103,7 +114,7 @@ class AgentRunner(private val container: AppContainer) {
     suspend fun runOnce(prompt: String, mode: AgentMode = AgentMode.RESEARCH, maxSteps: Int = 8): String {
         var answer = ""
         var failure: String? = null
-        newLoop(maxSteps = maxSteps, maxTokens = 1536).run(emptyList(), prompt, mode, extraContext(mode)).collect { event ->
+        newLoop(maxSteps = maxSteps, maxTokens = 1536).run(emptyList(), prompt, mode, extraContext(mode, prompt)).collect { event ->
             when (event) {
                 is AgentEvent.Completed -> answer = event.answer
                 is AgentEvent.Failed -> failure = event.message

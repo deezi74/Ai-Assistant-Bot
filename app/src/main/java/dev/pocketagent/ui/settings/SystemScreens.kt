@@ -185,6 +185,16 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
         ) { viewModel.push("google") }
         ConnectorCard(
+            "Photos & videos",
+            when {
+                viewModel.hasGeminiKey && viewModel.hasPollinationsToken -> "AI photos and videos · Gemini and Pollinations keys"
+                viewModel.hasGeminiKey -> "AI photos and videos · Gemini key"
+                viewModel.hasPollinationsToken -> "AI photos and videos · Pollinations key"
+                else -> "Free photos on · add a key for AI videos"
+            },
+            connected = viewModel.hasGeminiKey || viewModel.hasPollinationsToken, action = "Set up"
+        ) { viewModel.push("media") }
+        ConnectorCard(
             "Telegram",
             if (settings.telegramEnabled) "On · chat with ${settings.assistantName} from Telegram" else "Off",
             connected = settings.telegramEnabled, action = "Set up"
@@ -346,6 +356,87 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ).forEach { example ->
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
         }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+fun MediaStudioScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var tick by remember { mutableIntStateOf(0) }
+    val hasGemini = remember(tick) { viewModel.hasGeminiKey }
+    val hasPollinations = remember(tick) { viewModel.hasPollinationsToken }
+    var gemini by remember { mutableStateOf("") }
+    var pollinations by remember { mutableStateOf("") }
+
+    @Composable
+    fun Choice(label: String, selected: Boolean, onClick: () -> Unit) {
+        androidx.compose.material3.FilterChip(selected = selected, onClick = onClick, label = { Text(label) })
+    }
+
+    SubScreen("Photos & videos", onBack) {
+        Hint("Ask in chat: \"imagine a neon tiger\", \"make a video of a cat surfing at sunset\", or attach a photo and say \"animate this\" or \"edit this\". Pictures and videos show up in the chat and in Telegram.")
+
+        SectionTitle("AI videos")
+        Hint("Videos need one key. A Google AI Studio key is free to create and uses Gemini Omni (it can animate your photos). Video generation may need billing turned on in your Google account.")
+        OutlinedButton(onClick = { openUrl(context, "https://aistudio.google.com/apikey") }) { Text("Get a Gemini key") }
+        SecretField(gemini, { gemini = it.trim() }, if (hasGemini) "Gemini key (saved)" else "Gemini API key")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { viewModel.saveGeminiKey(gemini); gemini = ""; tick++ },
+                enabled = gemini.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+            ) { Text("Save") }
+            if (hasGemini) OutlinedButton(onClick = { viewModel.saveGeminiKey(null); tick++ }) { Text("Remove") }
+        }
+        Hint("Or use a Pollinations key (Veo, Seedance, Wan, Grok video models; uses your Pollinations credits).")
+        OutlinedButton(onClick = { openUrl(context, "https://enter.pollinations.ai") }) { Text("Get a Pollinations key") }
+        SecretField(pollinations, { pollinations = it.trim() }, if (hasPollinations) "Pollinations key (saved)" else "Pollinations key")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { viewModel.savePollinationsToken(pollinations); pollinations = ""; tick++ },
+                enabled = pollinations.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+            ) { Text("Save") }
+            if (hasPollinations) OutlinedButton(onClick = { viewModel.savePollinationsToken(null); tick++ }) { Text("Remove") }
+        }
+        if (hasGemini && hasPollinations) {
+            SectionTitle("Video service")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf("auto" to "Auto", "gemini" to "Gemini Omni", "pollinations" to "Pollinations").forEach { (id, label) ->
+                    Choice(label, settings.videoSource == id) { viewModel.updateSettings { it.copy(videoSource = id) } }
+                }
+            }
+        }
+        if (hasPollinations) {
+            SectionTitle("Pollinations video model")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "" to "Veo 3.1 fast", "bytedance/seedance-2.0-fast" to "Seedance 2 fast", "alibaba/wan-2.6" to "Wan 2.6",
+                    "x-ai/grok-imagine-video" to "Grok Imagine", "google/gemini-omni-1.1-flash" to "Gemini Omni"
+                ).forEach { (id, label) ->
+                    Choice(label, settings.videoModelPollinations == id) { viewModel.updateSettings { it.copy(videoModelPollinations = id) } }
+                }
+            }
+            SectionTitle("Photo quality")
+            Hint("With your Pollinations key, photos use the model you pick here. Without a key they use the free service.")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    "tongyi-mai/z-image-turbo" to "Z-Image (fast)", "black-forest-labs/flux.2-pro" to "Flux 2 Pro",
+                    "bytedance/seedream-4.5" to "Seedream 4.5", "google/gemini-3.1-flash-image" to "Gemini image",
+                    "openai/gpt-image-2" to "GPT Image 2", "ideogram-ai/ideogram-v4-quality" to "Ideogram (text in images)"
+                ).forEach { (id, label) ->
+                    Choice(label, settings.imageModel == id) { viewModel.updateSettings { it.copy(imageModel = id) } }
+                }
+            }
+        }
+        SectionTitle("Try saying")
+        listOf(
+            "Make a video of a golden retriever surfing a huge wave at sunset",
+            "Imagine a cyberpunk city street at night, rain, neon reflections",
+            "Make a 9:16 video of my logo spinning in chrome"
+        ).forEach { example -> SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) } }
     }
 }
 

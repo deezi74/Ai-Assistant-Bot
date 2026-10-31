@@ -16,6 +16,8 @@ data class AgentConfig(
     val maxSteps: Int = 12,
     val toolTimeoutMs: Long = 60_000,
     val maxObservationChars: Int = 8_000,
+    /** Short tool list plus full details only for tools the request needs; much faster prefill. */
+    val compactTools: Boolean = true,
     val generation: GenerationParams = GenerationParams()
 )
 
@@ -63,7 +65,16 @@ class AgentLoop(
         userImageJpegBase64: String? = null
     ): Flow<AgentEvent> = flow {
         val messages = ArrayList<ChatMessage>()
-        messages += ChatMessage(ChatRole.SYSTEM, persona.buildSystemPrompt(mode, tools.manifest(mode), extraContext))
+        val system = if (config.compactTools) {
+            val recent = history.lastOrNull { it.role == ChatRole.USER }?.content.orEmpty()
+            persona.buildSystemPrompt(
+                mode, tools.compactManifest(mode), extraContext,
+                toolDetails = tools.details(mode, "$userMessage\n$recent")
+            )
+        } else {
+            persona.buildSystemPrompt(mode, tools.manifest(mode), extraContext)
+        }
+        messages += ChatMessage(ChatRole.SYSTEM, system)
         messages += history.filter { it.role != ChatRole.SYSTEM }
         messages += ChatMessage(ChatRole.USER, userMessage, userImageJpegBase64)
 
@@ -188,8 +199,9 @@ class AgentLoop(
         if (mode !in tool.modes) return ToolResult.error("tool '${call.name}' is not enabled in ${mode.label} mode")
         if (!tool.isAvailable()) return ToolResult.error("tool '${call.name}' is unavailable right now (service disabled or permission missing)")
         return try {
-            withTimeoutOrNull(config.toolTimeoutMs) { tool.execute(call.arguments) }
-                ?: ToolResult.error("tool '${call.name}' timed out after ${config.toolTimeoutMs} ms")
+            val limit = tool.timeoutMs ?: config.toolTimeoutMs
+            withTimeoutOrNull(limit) { tool.execute(call.arguments) }
+                ?: ToolResult.error("tool '${call.name}' timed out after ${limit / 1000} s")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

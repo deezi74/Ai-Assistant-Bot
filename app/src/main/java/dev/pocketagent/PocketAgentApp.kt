@@ -102,6 +102,8 @@ private class OnlineOnlyTool(private val inner: Tool, private val offline: () ->
     override val description: String get() = inner.description
     override val argumentsSignature: String get() = inner.argumentsSignature
     override val modes: Set<AgentMode> get() = inner.modes
+    override val timeoutMs: Long? get() = inner.timeoutMs
+    override val keywords: List<String> get() = inner.keywords
     override fun isAvailable(): Boolean = !offline() && inner.isAvailable()
     override suspend fun execute(arguments: JsonObject): ToolResult =
         if (offline()) ToolResult.error("offline mode is on, network tools are disabled") else inner.execute(arguments)
@@ -128,6 +130,7 @@ class AppContainer(val app: PocketAgentApp) {
 
     val computer = ComputerSession(workspace)
     val characters = CharacterGenerator(settings)
+    val videos = dev.pocketagent.agent.VideoMaker(settings)
     val learner = Learner(this)
     val location = DeviceLocation(app) { settings.current.shareLocation }
     val places = PlacesClient(googleKey = { settings.googlePlacesKey })
@@ -162,6 +165,7 @@ class AppContainer(val app: PocketAgentApp) {
             TermuxTool(termux) { settings.current.termuxEnabled },
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             OnlineOnlyTool(ImagineTool(characters, workspace, settings) { session.turnImage }, offline),
+            OnlineOnlyTool(dev.pocketagent.agent.MakeVideoTool(videos, workspace, settings) { session.turnImage }, offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },
             TrackGoalTool { title, note, category ->

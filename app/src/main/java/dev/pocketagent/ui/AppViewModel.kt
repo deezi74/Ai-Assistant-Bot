@@ -718,6 +718,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val hasPollinationsToken: Boolean get() = !container.settings.pollinationsToken.isNullOrBlank()
+    val hasGeminiKey: Boolean get() = !container.settings.geminiKey.isNullOrBlank()
+    fun saveGeminiKey(key: String?) {
+        container.settings.geminiKey = key
+        toast(if (key.isNullOrBlank()) "Gemini key removed" else "Gemini key saved (encrypted, not included in backups)")
+    }
     fun savePollinationsToken(token: String?) {
         container.settings.pollinationsToken = token
         toast(if (token.isNullOrBlank()) "Pollinations key removed" else "Pollinations key saved (encrypted, not included in backups)")

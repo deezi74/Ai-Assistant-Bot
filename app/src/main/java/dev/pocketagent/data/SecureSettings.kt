@@ -70,6 +70,12 @@ data class AppSettings(
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
     val imageSource: String = "free",
+    /** Pollinations image model used when a Pollinations key is saved. */
+    val imageModel: String = "tongyi-mai/z-image-turbo",
+    /** "auto", "gemini" or "pollinations". */
+    val videoSource: String = "auto",
+    val videoModelGemini: String = "",
+    val videoModelPollinations: String = "",
     val fontScale: Float = 1.0f,
     val appLock: Boolean = false,
     val wifiOnlyDownloads: Boolean = false,
@@ -166,6 +172,10 @@ class SecureSettings(context: Context) : CredentialStore {
             telegramEnabled = prefs.getBoolean("telegram_enabled", d.telegramEnabled),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
+            imageModel = prefs.getString("image_model", null) ?: d.imageModel,
+            videoSource = prefs.getString("video_source", null) ?: d.videoSource,
+            videoModelGemini = prefs.getString("video_model_gemini", null) ?: d.videoModelGemini,
+            videoModelPollinations = prefs.getString("video_model_pollinations", null) ?: d.videoModelPollinations,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
             appLock = prefs.getBoolean("app_lock", d.appLock),
             wifiOnlyDownloads = prefs.getBoolean("wifi_only_downloads", d.wifiOnlyDownloads),
@@ -216,6 +226,10 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("telegram_enabled", next.telegramEnabled)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
+            .putString("image_model", next.imageModel)
+            .putString("video_source", next.videoSource)
+            .putString("video_model_gemini", next.videoModelGemini)
+            .putString("video_model_pollinations", next.videoModelPollinations)
             .putFloat("font_scale", next.fontScale)
             .putBoolean("app_lock", next.appLock)
             .putBoolean("wifi_only_downloads", next.wifiOnlyDownloads)
@@ -249,6 +263,11 @@ class SecureSettings(context: Context) : CredentialStore {
     var pollinationsToken: String?
         get() = secret("token_pollinations")
         set(value) = putSecret("token_pollinations", value)
+
+    /** Google AI Studio (Gemini API) key, used for AI videos with Gemini Omni. */
+    var geminiKey: String?
+        get() = secret("token_gemini")
+        set(value) = putSecret("token_gemini", value)
 
     var googlePlacesKey: String?
         get() = secret("token_google_places")

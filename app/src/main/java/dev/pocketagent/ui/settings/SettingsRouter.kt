@@ -80,6 +80,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "google" -> GoogleConnectorScreen(viewModel, back)
             "termux" -> TermuxConnectorScreen(viewModel, back)
             "telegram" -> TelegramConnectorScreen(viewModel, back)
+            "media" -> MediaStudioScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)

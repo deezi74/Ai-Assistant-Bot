@@ -79,6 +79,7 @@ class ImagineTool(
             "Write a vivid, specific prompt (subject, setting, style, lighting). The picture appears in the chat by itself; reply with one short line."
     override val argumentsSignature = """{"prompt": string, "shape"?: "square"|"portrait"|"landscape", "edit"?: bool}"""
     override val modes = bothModes
+    override val timeoutMs: Long = 200_000
 
     override suspend fun execute(arguments: JsonObject): ToolResult {
         val prompt = arguments.string("prompt") ?: arguments.string("description") ?: return ToolResult.error("missing \"prompt\"")
@@ -103,5 +104,55 @@ class ImagineTool(
 
     companion object {
         const val IMAGE_MARKER = "[image:"
+    }
+}
+
+/**
+ * Makes short AI videos ("make a video of…"), optionally animating the photo the
+ * user attached this turn. Needs a Gemini or Pollinations key; the MP4 is saved to
+ * the media folder and plays in the chat.
+ */
+class MakeVideoTool(
+    private val maker: VideoMaker,
+    private val workspace: Workspace,
+    private val settings: SecureSettings,
+    private val attachedImage: () -> java.io.File?
+) : Tool {
+    override val name = "make_video"
+    override val description =
+        "Make a short AI video (about 4 to 8 seconds, with sound) from a description, or animate the photo the user attached (from_photo: true). " +
+            "Write a cinematic prompt: subject, action, setting, camera move, lighting, mood, sound. It takes one to three minutes; " +
+            "the video appears in the chat by itself, so reply with one short line."
+    override val argumentsSignature = """{"prompt": string, "shape"?: "portrait"|"landscape", "seconds"?: int, "from_photo"?: bool}"""
+    override val modes = bothModes
+    override val timeoutMs: Long = 9 * 60_000L
+
+    override suspend fun execute(arguments: JsonObject): ToolResult {
+        if (!maker.ready()) return ToolResult.error(VideoMaker.NEEDS_KEY + " Tell the user exactly that.")
+        val prompt = arguments.string("prompt") ?: arguments.string("description") ?: return ToolResult.error("missing \"prompt\"")
+        val fromPhoto = arguments["from_photo"]?.toString()?.trim('"') == "true"
+        val photo = if (fromPhoto) attachedImage() ?: return ToolResult.error("no photo is attached; ask the user to attach one with +") else null
+        val vertical = when (arguments.string("shape")?.lowercase(Locale.US)) {
+            "landscape", "wide", "horizontal" -> false
+            else -> true
+        }
+        val seconds = arguments.string("seconds")?.toIntOrNull() ?: 8
+        return try {
+            val bytes = photo?.let { workspace.jpegBase64(it, 1280) }?.let { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }
+            val file = java.io.File(workspace.mediaDir, "video_${System.currentTimeMillis()}.mp4")
+            val source = settings.current.videoSource.takeIf { it != "auto" }
+            maker.make(prompt, vertical, seconds, bytes, file, source)
+            ToolResult("Made the video (it plays in the chat).\n${VIDEO_MARKER}${file.name}]")
+        } catch (e: Exception) {
+            ToolResult.error("could not make the video: ${e.message}")
+        }
+    }
+
+    companion object {
+        const val VIDEO_MARKER = "[video:"
+
+        /** The media file named by an image or video marker in a tool output. */
+        fun mediaFrom(output: String): String? =
+            Regex("\\[(?:image|video):([A-Za-z0-9_.-]+)]").find(output)?.groupValues?.get(1)
     }
 }

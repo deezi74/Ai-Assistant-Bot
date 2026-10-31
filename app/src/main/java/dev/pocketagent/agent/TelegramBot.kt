@@ -144,11 +144,10 @@ class TelegramBot(private val container: AppContainer) {
         try {
             val mode = settings.current.mode
             container.runner.newLoop()
-                .run(history, prompt, mode, container.runner.extraContext(mode) + "\n- The user is writing from Telegram; keep replies short and plain.", image)
+                .run(history, prompt, mode, container.runner.extraContext(mode, prompt) + "\n- The user is writing from Telegram; keep replies short and plain.", image)
                 .collect { e ->
                     when (e) {
-                        is AgentEvent.Observation -> Regex(Regex.escape(ImagineTool.IMAGE_MARKER) + "([A-Za-z0-9_.-]+)]").find(e.output)
-                            ?.groupValues?.get(1)?.let { File(container.workspace.mediaDir, it) }?.takeIf { it.isFile }?.let { images += it }
+                        is AgentEvent.Observation -> MakeVideoTool.mediaFrom(e.output)?.let { File(container.workspace.mediaDir, it) }?.takeIf { it.isFile }?.let { images += it }
                         is AgentEvent.Completed -> answer = e.answer
                         is AgentEvent.Failed -> answer = "Something went wrong: ${e.message}"
                         else -> Unit
@@ -161,7 +160,7 @@ class TelegramBot(private val container: AppContainer) {
         } finally {
             typing.cancel()
         }
-        images.forEach { runCatching { sendPhoto(token, chatId, it) } }
+        images.forEach { runCatching { if (it.name.endsWith(".mp4")) sendVideo(token, chatId, it) else sendPhoto(token, chatId, it) } }
         if (answer.isNotBlank()) {
             send(token, chatId, answer)
             dao.insertMessage(MessageEntity(conversationId = conversationId, role = "assistant", content = answer, createdAt = System.currentTimeMillis()))
@@ -196,6 +195,16 @@ class TelegramBot(private val container: AppContainer) {
             .addFormDataPart("photo", file.name, file.asRequestBody("image/jpeg".toMediaType()))
             .build()
         http.newCall(Request.Builder().url("https://api.telegram.org/bot$token/sendPhoto").post(body).build()).execute().close()
+    }
+
+    private fun sendVideo(token: String, chatId: Long, file: File) {
+        val body = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("chat_id", chatId.toString())
+            .addFormDataPart("supports_streaming", "true")
+            .addFormDataPart("video", file.name, file.asRequestBody("video/mp4".toMediaType()))
+            .build()
+        val client = http.newBuilder().writeTimeout(3, TimeUnit.MINUTES).build()
+        client.newCall(Request.Builder().url("https://api.telegram.org/bot$token/sendVideo").post(body).build()).execute().close()
     }
 
     private fun call(token: String, method: String, body: JSONObject, longPoll: Boolean = false): JSONObject {

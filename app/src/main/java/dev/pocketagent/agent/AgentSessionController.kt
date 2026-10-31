@@ -202,7 +202,7 @@ class AgentSessionController(private val container: AppContainer) {
             var answer = ""
             try {
                 val loop = if (task) container.runner.newLoop(maxSteps = TASK_STEPS) else container.runner.newLoop()
-                loop.run(history, if (task) TASK_BRIEF + prompt else prompt, mode, container.runner.extraContext(mode), image)
+                loop.run(history, if (task) TASK_BRIEF + prompt else prompt, mode, container.runner.extraContext(mode, prompt), image)
                     .collect { event -> handle(event, answerId, conversationId) { answer = it } }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 container.workspace.log("W", "chat stopped by user")
@@ -409,7 +409,7 @@ class AgentSessionController(private val container: AppContainer) {
                 }
             }
             is AgentEvent.Observation -> {
-                val made = Regex(Regex.escape(ImagineTool.IMAGE_MARKER) + "([A-Za-z0-9_.-]+)]").find(event.output)?.groupValues?.get(1)
+                val made = MakeVideoTool.mediaFrom(event.output)
                     ?.takeIf { File(container.workspace.mediaDir, it).isFile }
                 dao.insertMessage(
                     MessageEntity(

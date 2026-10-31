@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ContentCopy
@@ -59,6 +60,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -278,6 +280,14 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                                 input = if (pending != null) "Edit this photo: " else "Imagine "
                             }
                         )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Make a video") },
+                            leadingIcon = { Icon(Icons.Filled.Movie, null) },
+                            onClick = {
+                                attachMenu = false
+                                input = if (pending != null) "Animate this photo into a video: " else "Make a video of "
+                            }
+                        )
                     }
                 },
                 onVoice = { voiceOpen = true },
@@ -427,6 +437,10 @@ private fun MessageList(
 /** A picture the assistant made, shown large; tap to open it full screen in the gallery app. */
 @Composable
 private fun GeneratedImage(file: File) {
+    if (file.name.endsWith(".mp4", ignoreCase = true)) {
+        GeneratedVideo(file)
+        return
+    }
     val context = androidx.compose.ui.platform.LocalContext.current
     val image = rememberFileImage(file, maxDim = 1080)
     if (image != null) {
@@ -448,6 +462,57 @@ private fun GeneratedImage(file: File) {
                 }
         )
     }
+}
+
+/** An AI video in the chat: plays inline (tap to pause or play), with buttons to open full screen or share. */
+@Composable
+private fun GeneratedVideo(file: File) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    if (!file.isFile) return
+    fun uri() = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+    var view by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<android.widget.VideoView?>(null) }
+    androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 4.dp).widthIn(max = 360.dp)) {
+        androidx.compose.ui.viewinterop.AndroidView(
+            factory = { ctx ->
+                android.widget.VideoView(ctx).apply {
+                    setVideoPath(file.absolutePath)
+                    setOnPreparedListener { mp ->
+                        mp.isLooping = true
+                        val w = mp.videoWidth.coerceAtLeast(1)
+                        val h = mp.videoHeight.coerceAtLeast(1)
+                        layoutParams = layoutParams?.apply { height = (width * h / w).coerceAtMost((ctx.resources.displayMetrics.heightPixels * 0.6f).toInt()) }
+                        requestLayout()
+                        seekTo(1)
+                    }
+                    setOnClickListener { if (isPlaying) pause() else start() }
+                    view = this
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 180.dp)
+                .clip(RoundedCornerShape(18.dp))
+        )
+        androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { view?.let { if (it.isPlaying) it.pause() else it.start() } }) { Text("Play / pause") }
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(uri(), "video/mp4").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                }
+            }) { Text("Full screen") }
+            TextButton(onClick = {
+                runCatching {
+                    context.startActivity(
+                        Intent.createChooser(
+                            Intent(Intent.ACTION_SEND).setType("video/mp4").putExtra(Intent.EXTRA_STREAM, uri()).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+                            "Share video"
+                        )
+                    )
+                }
+            }) { Text("Share") }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(file) { onDispose { view?.stopPlayback() } }
 }
 
 @Composable

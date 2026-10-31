@@ -97,6 +97,14 @@ class CharacterGenerator(private val settings: SecureSettings) {
     }
 
     private fun free(prompt: String, seed: Int, width: Int = 768, height: Int = 768): ByteArray {
+        val token = settings.pollinationsToken
+        if (!token.isNullOrBlank()) {
+            try {
+                return keyed(prompt, seed, width, height, token)
+            } catch (e: IOException) {
+                // Fall back to the anonymous service below.
+            }
+        }
         val url = "https://image.pollinations.ai/prompt/".toHttpUrl().newBuilder()
             .addPathSegment(prompt)
             .addQueryParameter("width", width.toString())
@@ -114,6 +122,26 @@ class CharacterGenerator(private val settings: SecureSettings) {
             val bytes = resp.body?.bytes() ?: throw IOException("Empty image")
             if (!type.startsWith("image/")) throw IOException("Image service is busy (${type.ifEmpty { "no image" }}). Try again.")
             return bytes
+        }
+    }
+
+    /** Pollinations with the user's key: better models (Flux 2, GPT Image, Seedream…) and no queue. */
+    private fun keyed(prompt: String, seed: Int, width: Int, height: Int, token: String): ByteArray {
+        val model = settings.current.imageModel.ifBlank { "tongyi-mai/z-image-turbo" }
+        val url = "https://gen.pollinations.ai/image/".toHttpUrl().newBuilder()
+            .addPathSegment(prompt)
+            .addQueryParameter("model", model)
+            .addQueryParameter("width", width.toString())
+            .addQueryParameter("height", height.toString())
+            .addQueryParameter("seed", seed.toString())
+            .build()
+        val request = Request.Builder().url(url).header("Accept", "image/*").header("Authorization", "Bearer $token").build()
+        http.newCall(request).execute().use { resp ->
+            val type = resp.header("Content-Type").orEmpty()
+            if (!resp.isSuccessful || !type.startsWith("image/")) {
+                throw IOException(errorMessage(resp.body?.string().orEmpty()) ?: "Pollinations answered HTTP ${resp.code}")
+            }
+            return resp.body?.bytes() ?: throw IOException("Empty image")
         }
     }
 
