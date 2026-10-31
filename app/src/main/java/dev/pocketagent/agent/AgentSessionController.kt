@@ -233,6 +233,7 @@ class AgentSessionController(private val container: AppContainer) {
                     )
                 }
                 stopForegroundService()
+                ensureRemembered(prompt, conversationId)
                 if (task) notifyTaskDone(prompt, answer.ifBlank { finalText })
                 if (answer.isNotBlank()) afterTask(prompt, answer, conversationId)
             }
@@ -255,6 +256,22 @@ class AgentSessionController(private val container: AppContainer) {
             container.localEngine.abort()
         }
         learnJob = null
+    }
+
+    /**
+     * Small models often answer "Remembered" without calling the remember tool.
+     * When the user plainly asked to remember something and the tool wasn't
+     * used this turn, save it here so the promise is kept.
+     */
+    private suspend fun ensureRemembered(prompt: String, conversationId: Long) {
+        if (synchronized(turnTools) { "remember" in turnTools }) return
+        val fact = rememberRequest(prompt) ?: return
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { container.workspace.appendMemory(fact) }
+        val note = "Saved to memory: $fact"
+        dao.insertMessage(MessageEntity(conversationId = conversationId, role = "tool", content = note, toolName = "remember", createdAt = now()))
+        if (_state.value.conversationId == conversationId) {
+            _state.update { s -> s.copy(items = s.items + ChatItem(newId(), ItemRole.TOOL, note, toolName = "remember")) }
+        }
     }
 
     /**
@@ -496,6 +513,22 @@ class AgentSessionController(private val container: AppContainer) {
     }
 
     companion object {
+        private val REMEMBER = Regex(
+            "^\\s*(?:hey[,!]?\\s+)?(?:please\\s+|can you\\s+|could you\\s+|i want you to\\s+)?" +
+                "(?:remember|don'?t forget|never forget|keep in mind|save (?:this|that|it) (?:to|in) (?:your )?memory|add (?:this|that) to (?:your )?memory)" +
+                "\\b[\\s,:]*(?:(?:this|that)\\b[\\s,:]*)?(?:that\\s+)?(.*)$",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+
+        /** The fact in "remember that …" style messages, or null. */
+        fun rememberRequest(prompt: String): String? {
+            if (prompt.trim().endsWith("?")) return null // "remember when…?" is a question, not a request
+            val fact = REMEMBER.find(prompt.trim())?.groupValues?.get(1)?.trim()?.trimEnd('.', '!', '?')?.trim() ?: return null
+            if (fact.length < 3 || fact.length > 600) return null
+            return fact.replace(Regex("\\s+"), " ").replaceFirstChar { it.uppercase() }
+        }
+
+
         const val TASK_STEPS = 30
         const val TASK_BRIEF =
             "[Agent task] Work on this on your own until it is done. First write a short numbered plan (3 to 7 steps). " +
