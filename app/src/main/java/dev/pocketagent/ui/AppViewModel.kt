@@ -632,6 +632,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val hasGithubToken: Boolean get() = container.github.hasToken()
     val builtApps: Set<String> get() = container.settings.builtApps
 
+    // Telegram
+
+    val telegramStatus: StateFlow<String> get() = container.telegram.status
+    val telegramPairCode: String get() = container.telegram.pairingCode
+    val hasTelegramToken: Boolean get() = !container.settings.telegramToken.isNullOrBlank()
+    val telegramPaired: Boolean get() = container.settings.telegramChatId != null
+    private val _telegramNote = MutableStateFlow<String?>(null)
+    val telegramNote: StateFlow<String?> = _telegramNote.asStateFlow()
+
+    fun saveTelegramToken(token: String) = viewModelScope.launch {
+        val t = token.trim()
+        _telegramNote.value = "Checking the token…"
+        _telegramNote.value = try {
+            val name = container.telegram.test(t)
+            container.settings.telegramToken = t
+            container.settings.telegramChatId = null
+            container.settings.telegramOffset = 0L
+            setTelegram(true)
+            "Connected to $name. Now open it in Telegram and send: /start ${container.telegram.pairingCode}"
+        } catch (e: Exception) {
+            e.message ?: "That token didn't work"
+        }
+    }
+
+    fun setTelegram(on: Boolean) {
+        container.settings.update { it.copy(telegramEnabled = on) }
+        if (on) {
+            if (!dev.pocketagent.service.TelegramService.start(getApplication())) _telegramNote.value = "Open TruAgent and try again; Android blocked starting the bot in the background."
+        } else {
+            dev.pocketagent.service.TelegramService.stop(getApplication())
+            container.telegram.stop()
+        }
+    }
+
+    fun unpairTelegram() {
+        container.settings.telegramChatId = null
+        _telegramNote.value = "Unpaired. Send /start ${container.telegram.pairingCode} from the Telegram account you want to use."
+    }
+
+    fun removeTelegram() {
+        setTelegram(false)
+        container.settings.telegramToken = null
+        container.settings.telegramChatId = null
+        _telegramNote.value = "Bot token removed from this phone."
+    }
+
     // Termux
 
     fun termuxInstalled(): Boolean = container.termux.isInstalled()
@@ -787,6 +833,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // endregion
 
     init {
+        if (container.settings.current.telegramEnabled && !container.settings.telegramToken.isNullOrBlank()) {
+            dev.pocketagent.service.TelegramService.start(getApplication())
+        }
         refreshLocalModels()
         refreshSkills()
         viewModelScope.launch {

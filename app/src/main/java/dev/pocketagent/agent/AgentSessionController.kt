@@ -146,9 +146,15 @@ class AgentSessionController(private val container: AppContainer) {
 
     fun clearTerminal() = _state.update { it.copy(terminal = emptyList()) }
 
+    /** The photo attached to the turn in progress (the imagine tool edits it). */
+    @Volatile
+    var turnImage: File? = null
+        private set
+
     fun send(text: String, mode: AgentMode, imageFile: File? = null) {
         val prompt = text.trim().ifEmpty { if (imageFile != null) "What's in this image?" else "" }
         if (prompt.isEmpty() || _state.value.running) return
+        turnImage = imageFile
 
         val history = _state.value.items.mapNotNull {
             when (it.role) {
@@ -375,14 +381,19 @@ class AgentSessionController(private val container: AppContainer) {
                 }
             }
             is AgentEvent.Observation -> {
+                val made = Regex(Regex.escape(ImagineTool.IMAGE_MARKER) + "([A-Za-z0-9_.-]+)]").find(event.output)?.groupValues?.get(1)
+                    ?.takeIf { File(container.workspace.mediaDir, it).isFile }
                 dao.insertMessage(
                     MessageEntity(
                         conversationId = conversationId, role = "tool", content = event.output,
-                        toolName = event.name, isError = event.isError, createdAt = now()
+                        toolName = event.name, isError = event.isError, imageFile = made, createdAt = now()
                     )
                 )
                 _state.update { s ->
-                    val toolItem = ChatItem(newId(), ItemRole.TOOL, event.output, event.name, event.isError)
+                    val toolItem = ChatItem(
+                        newId(), ItemRole.TOOL, event.output, event.name, event.isError,
+                        imagePath = made?.let { File(container.workspace.mediaDir, it).absolutePath }
+                    )
                     val idx = s.items.indexOfFirst { it.id == answerId }
                     val items = if (idx >= 0) s.items.toMutableList().apply { add(idx, toolItem) } else s.items + toolItem
                     s.copy(

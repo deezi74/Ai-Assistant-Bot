@@ -3,5 +3,6 @@
     <external-files-path name="artifacts" path="artifacts/" />
     <external-files-path name="media" path="media/" />
     <cache-path name="exports" path="exports/" />
+    <cache-path name="camera" path="camera/" />
     <files-path name="persona" path="persona/" />
 </paths>

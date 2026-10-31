@@ -7,6 +7,7 @@ import android.os.Build
 import dev.pocketagent.agent.AgentRunner
 import dev.pocketagent.agent.AgentSessionController
 import dev.pocketagent.agent.ChangeCharacterTool
+import dev.pocketagent.agent.ImagineTool
 import dev.pocketagent.agent.CharacterGenerator
 import dev.pocketagent.agent.ComputerSession
 import dev.pocketagent.agent.DeviceLocation
@@ -160,6 +161,7 @@ class AppContainer(val app: PocketAgentApp) {
             OnlineOnlyTool(GoogleDriveTool(google), offline),
             TermuxTool(termux) { settings.current.termuxEnabled },
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
+            OnlineOnlyTool(ImagineTool(characters, workspace, settings) { session.turnImage }, offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },
             TrackGoalTool { title, note, category ->
@@ -174,6 +176,7 @@ class AppContainer(val app: PocketAgentApp) {
     val feed = FeedGenerator(this)
     val routines = RoutineScheduler(app)
     val session = AgentSessionController(this)
+    val telegram = dev.pocketagent.agent.TelegramBot(this)
     val backup = Backup(app, database, workspace, settings)
 
     init {

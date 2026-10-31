@@ -46,6 +46,12 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -102,6 +108,17 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
     val avatarVersion by viewModel.avatarVersion.collectAsStateWithLifecycle()
 
     var input by rememberSaveable { mutableStateOf("") }
+    var voiceOpen by rememberSaveable { mutableStateOf(false) }
+    var attachMenu by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val speaker = remember { Speaker(context) }
+    val speakingNow by speaker.speaking.collectAsStateWithLifecycle()
+    var speakingId by remember { mutableStateOf<Long?>(null) }
+    androidx.compose.runtime.DisposableEffect(Unit) { onDispose { speaker.shutdown() } }
+    var cameraUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        cameraUri?.let { if (ok) viewModel.attachImage(it) }
+    }
     val accent = if (settings.mode == AgentMode.WIT) Palette.Accent else Palette.Research
 
     LaunchedEffect(draft) {
@@ -161,7 +178,21 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                     }
                 )
             } else {
-                MessageList(chat.items, accent, Modifier.weight(1f)) {
+                MessageList(
+                    chat.items, accent, Modifier.weight(1f),
+                    speakingId = if (speakingNow) speakingId else null,
+                    onSpeak = { item ->
+                        if (speakingNow && speakingId == item.id) speaker.stop() else {
+                            speakingId = item.id
+                            speaker.speak(item.text)
+                        }
+                    },
+                    onCopy = { text ->
+                        val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                        cm?.setPrimaryClip(android.content.ClipData.newPlainText("reply", text))
+                        viewModel.toast("Copied")
+                    }
+                ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ActivityAvatar(
                             settings.avatarKind, settings.avatarValue, settings.assistantName,
@@ -183,7 +214,44 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                 accent = accent,
                 placeholder = "Message ${settings.assistantName}",
                 canSend = input.isNotBlank() || pending != null,
-                onAttach = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onAttach = { attachMenu = true },
+                attachMenu = {
+                    androidx.compose.material3.DropdownMenu(expanded = attachMenu, onDismissRequest = { attachMenu = false }) {
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Photo") },
+                            leadingIcon = { Icon(Icons.Filled.Image, null) },
+                            onClick = {
+                                attachMenu = false
+                                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Camera") },
+                            leadingIcon = { Icon(Icons.Filled.PhotoCamera, null) },
+                            onClick = {
+                                attachMenu = false
+                                val dir = java.io.File(context.cacheDir, "camera").apply { mkdirs() }
+                                val file = java.io.File(dir, "photo_${System.currentTimeMillis()}.jpg")
+                                val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                                cameraUri = uri
+                                try {
+                                    camera.launch(uri)
+                                } catch (e: ActivityNotFoundException) {
+                                    viewModel.toast("No camera app found")
+                                }
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Imagine an image") },
+                            leadingIcon = { Icon(Icons.Filled.AutoAwesome, null) },
+                            onClick = {
+                                attachMenu = false
+                                input = if (pending != null) "Edit this photo: " else "Imagine "
+                            }
+                        )
+                    }
+                },
+                onVoice = { voiceOpen = true },
                 onMic = {
                     val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                         .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -202,7 +270,9 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
             )
         }
 
-        AnimatedVisibility(visible = showTerminal && settings.showTerminal && (chat.terminal.isNotEmpty() || chat.running)) {
+        if (voiceOpen) VoiceMode(viewModel) { voiceOpen = false }
+
+        AnimatedVisibility(visible = !voiceOpen && showTerminal && settings.showTerminal && (chat.terminal.isNotEmpty() || chat.running)) {
             AgentTerminal(
                 lines = chat.terminal,
                 running = chat.running,
@@ -265,7 +335,15 @@ private fun EmptyChat(
 }
 
 @Composable
-private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier, working: @Composable () -> Unit) {
+private fun MessageList(
+    items: List<ChatItem>,
+    accent: Color,
+    modifier: Modifier,
+    speakingId: Long?,
+    onSpeak: (ChatItem) -> Unit,
+    onCopy: (String) -> Unit,
+    working: @Composable () -> Unit
+) {
     val listState = rememberLazyListState()
     val lastLength = items.lastOrNull()?.text?.length ?: 0
     LaunchedEffect(items.size, lastLength) {
@@ -283,16 +361,62 @@ private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier
                     item.imagePath?.let { path -> ChatImage(File(path)) }
                     Bubble(item.text, Palette.SurfaceHigh, Alignment.CenterEnd, Palette.Text)
                 }
-                ItemRole.ASSISTANT -> if (item.streaming && item.text.isEmpty()) working() else Bubble(
-                    text = item.text + if (item.streaming) "▍" else "",
-                    background = Color.Transparent,
-                    alignment = Alignment.CenterStart,
-                    color = if (item.isError) Palette.Error else Palette.Text,
-                    border = null
-                )
-                ItemRole.TOOL -> ToolChip(item, accent)
+                ItemRole.ASSISTANT -> if (item.streaming && item.text.isEmpty()) working() else Column(Modifier.fillMaxWidth()) {
+                    item.imagePath?.let { path -> GeneratedImage(File(path)) }
+                    Bubble(
+                        text = item.text + if (item.streaming) "▍" else "",
+                        background = Color.Transparent,
+                        alignment = Alignment.CenterStart,
+                        color = if (item.isError) Palette.Error else Palette.Text,
+                        border = null
+                    )
+                    if (!item.streaming && !item.isError && item.text.isNotBlank()) {
+                        Row {
+                            IconButton(onClick = { onSpeak(item) }, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    if (speakingId == item.id) Icons.Filled.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                    if (speakingId == item.id) "Stop reading" else "Read aloud",
+                                    tint = Palette.TextMuted, modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            IconButton(onClick = { onCopy(item.text) }, modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Filled.ContentCopy, "Copy", tint = Palette.TextMuted, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+                ItemRole.TOOL -> Column(Modifier.fillMaxWidth()) {
+                    item.imagePath?.let { path -> GeneratedImage(File(path)) }
+                    ToolChip(item, accent)
+                }
             }
         }
+    }
+}
+
+/** A picture the assistant made, shown large; tap to open it full screen in the gallery app. */
+@Composable
+private fun GeneratedImage(file: File) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val image = rememberFileImage(file, maxDim = 1080)
+    if (image != null) {
+        Image(
+            bitmap = image,
+            contentDescription = "Generated image",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .padding(vertical = 4.dp)
+                .widthIn(max = 360.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .clickable {
+                    runCatching {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(context, context.packageName + ".files", file)
+                        context.startActivity(
+                            Intent(Intent.ACTION_VIEW).setDataAndType(uri, "image/*").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        )
+                    }
+                }
+        )
     }
 }
 
@@ -421,6 +545,8 @@ private fun Composer(
     placeholder: String,
     canSend: Boolean,
     onAttach: () -> Unit,
+    attachMenu: @Composable () -> Unit,
+    onVoice: () -> Unit,
     onMic: () -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit
@@ -435,7 +561,10 @@ private fun Composer(
             .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.Bottom
     ) {
-        IconButton(onClick = onAttach) { Icon(Icons.Filled.Add, "Attach image", tint = Palette.TextMuted) }
+        Box {
+            IconButton(onClick = onAttach) { Icon(Icons.Filled.Add, "Attach or imagine", tint = Palette.TextMuted) }
+            attachMenu()
+        }
         TextField(
             value = value,
             onValueChange = onValueChange,
@@ -452,7 +581,12 @@ private fun Composer(
             )
         )
         if (!running && !canSend) {
-            IconButton(onClick = onMic) { Icon(Icons.Filled.Mic, "Speak", tint = Palette.TextMuted) }
+            IconButton(onClick = onMic) { Icon(Icons.Filled.Mic, "Dictate", tint = Palette.TextMuted) }
+            FilledIconButton(
+                onClick = onVoice,
+                modifier = Modifier.size(48.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent, contentColor = Color.Black)
+            ) { Icon(Icons.Filled.GraphicEq, "Voice mode") }
         } else {
             FilledIconButton(
                 onClick = if (running) onStop else onSend,

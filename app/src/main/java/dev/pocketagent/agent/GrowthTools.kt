@@ -62,3 +62,46 @@ class ChangeCharacterTool(
         }
     }
 }
+
+/**
+ * Makes pictures in the chat ("imagine…") and edits the photo the user just
+ * attached. The image is saved to the media folder and shown in the chat.
+ */
+class ImagineTool(
+    private val generator: CharacterGenerator,
+    private val workspace: Workspace,
+    private val settings: SecureSettings,
+    private val attachedImage: () -> java.io.File?
+) : Tool {
+    override val name = "imagine"
+    override val description =
+        "Create an image from a description, or edit the photo the user attached this turn (edit: true). " +
+            "Write a vivid, specific prompt (subject, setting, style, lighting). The picture appears in the chat by itself; reply with one short line."
+    override val argumentsSignature = """{"prompt": string, "shape"?: "square"|"portrait"|"landscape", "edit"?: bool}"""
+    override val modes = bothModes
+
+    override suspend fun execute(arguments: JsonObject): ToolResult {
+        val prompt = arguments.string("prompt") ?: arguments.string("description") ?: return ToolResult.error("missing \"prompt\"")
+        val edit = arguments["edit"]?.toString()?.trim('"') == "true"
+        val input = if (edit) attachedImage() ?: return ToolResult.error("no photo is attached to edit; ask the user to attach one with +") else null
+        val (w, h) = when (arguments.string("shape")?.lowercase(Locale.US)) {
+            "portrait", "tall", "vertical" -> 768 to 1152
+            "landscape", "wide", "horizontal" -> 1152 to 768
+            else -> 1024 to 1024
+        }
+        val source = settings.current.imageSource.takeIf { id -> generator.sources().any { it.id == id } } ?: CharacterGenerator.FREE
+        return try {
+            val inputBytes = input?.let { workspace.jpegBase64(it, 1024) }?.let { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }
+            val bytes = generator.image(prompt, w, h, Random.nextInt(1, 1_000_000), source, inputBytes)
+            val file = java.io.File(workspace.mediaDir, "imagine_${System.currentTimeMillis()}.jpg")
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { file.writeBytes(bytes) }
+            ToolResult("${if (edit) "Edited" else "Created"} the image (shown to the user).\n${IMAGE_MARKER}${file.name}]")
+        } catch (e: Exception) {
+            ToolResult.error("could not make the image: ${e.message}")
+        }
+    }
+
+    companion object {
+        const val IMAGE_MARKER = "[image:"
+    }
+}

@@ -52,11 +52,55 @@ class CharacterGenerator(private val settings: SecureSettings) {
         }
     }
 
-    private fun free(prompt: String, seed: Int): ByteArray {
+    /**
+     * Any picture from a free-form prompt, or an edit of [input] (JPEG/PNG bytes).
+     * Editing needs an OpenAI or OpenRouter key; the free service only creates.
+     */
+    suspend fun image(prompt: String, width: Int, height: Int, seed: Int, sourceId: String, input: ByteArray? = null): ByteArray =
+        withContext(Dispatchers.IO) {
+            require(prompt.isNotBlank()) { "Describe the picture first" }
+            val full = prompt.trim() + ". No watermark."
+            if (input != null) {
+                when {
+                    sourceId == OPENROUTER || (sourceId != OPENAI && settings.hasToken(RemoteKind.OPENROUTER)) -> openRouter(full, input)
+                    settings.hasToken(RemoteKind.OPENAI_COMPATIBLE) -> openAiEdit(full, input)
+                    else -> throw IOException("Editing a photo needs an OpenAI or OpenRouter key (Settings ▸ Manage providers). The free image service can only make new pictures.")
+                }
+            } else {
+                when (sourceId) {
+                    OPENAI -> openAi(full, size = if (width > height) "1536x1024" else if (height > width) "1024x1536" else "1024x1024")
+                    OPENROUTER -> openRouter(full)
+                    else -> free(full, seed, width, height)
+                }
+            }
+        }
+
+    private fun openAiEdit(prompt: String, input: ByteArray): ByteArray {
+        val token = settings.getToken(RemoteKind.OPENAI_COMPATIBLE) ?: throw IOException("Add an OpenAI key in Manage providers")
+        val body = okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM)
+            .addFormDataPart("model", "gpt-image-1")
+            .addFormDataPart("prompt", prompt)
+            .addFormDataPart("image", "input.jpg", input.toRequestBody("image/jpeg".toMediaType()))
+            .build()
+        val req = Request.Builder()
+            .url(RemoteKind.OPENAI_COMPATIBLE.defaultBaseUrl.trimEnd('/') + "/images/edits")
+            .header("Authorization", "Bearer $token")
+            .post(body)
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) throw IOException(errorMessage(text) ?: "OpenAI answered HTTP ${resp.code}")
+            val item = JSONObject(text).optJSONArray("data")?.optJSONObject(0) ?: throw IOException("OpenAI returned no image")
+            item.optString("b64_json").takeIf { it.isNotEmpty() }?.let { return Base64.decode(it, Base64.DEFAULT) }
+            return download(item.optString("url").takeIf { it.isNotEmpty() } ?: throw IOException("OpenAI returned no image"))
+        }
+    }
+
+    private fun free(prompt: String, seed: Int, width: Int = 768, height: Int = 768): ByteArray {
         val url = "https://image.pollinations.ai/prompt/".toHttpUrl().newBuilder()
             .addPathSegment(prompt)
-            .addQueryParameter("width", "768")
-            .addQueryParameter("height", "768")
+            .addQueryParameter("width", width.toString())
+            .addQueryParameter("height", height.toString())
             .addQueryParameter("seed", seed.toString())
             .addQueryParameter("nologo", "true")
             .addQueryParameter("safe", "true")
@@ -73,14 +117,14 @@ class CharacterGenerator(private val settings: SecureSettings) {
         }
     }
 
-    private fun openAi(prompt: String): ByteArray {
+    private fun openAi(prompt: String, size: String = "1024x1024"): ByteArray {
         val token = settings.getToken(RemoteKind.OPENAI_COMPATIBLE) ?: throw IOException("Add an OpenAI key in Manage providers")
         val s = settings.current
         val base = if (s.remoteKind == RemoteKind.OPENAI_COMPATIBLE && s.remoteBaseUrl.contains("openai.com")) s.remoteBaseUrl else RemoteKind.OPENAI_COMPATIBLE.defaultBaseUrl
         val body = JSONObject()
             .put("model", "gpt-image-1")
             .put("prompt", prompt)
-            .put("size", "1024x1024")
+            .put("size", size)
             .put("n", 1)
         val req = Request.Builder()
             .url(base.trimEnd('/') + "/images/generations")
@@ -97,12 +141,27 @@ class CharacterGenerator(private val settings: SecureSettings) {
         }
     }
 
-    private fun openRouter(prompt: String): ByteArray {
+    private fun openRouter(prompt: String, input: ByteArray? = null): ByteArray {
         val token = settings.getToken(RemoteKind.OPENROUTER) ?: throw IOException("Add an OpenRouter key in Manage providers")
         val body = JSONObject()
             .put("model", OPENROUTER_IMAGE_MODEL)
             .put("modalities", JSONArray().put("image").put("text"))
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", prompt)))
+            .put(
+                "messages",
+                JSONArray().put(
+                    JSONObject().put("role", "user").put(
+                        "content",
+                        if (input == null) prompt else JSONArray()
+                            .put(JSONObject().put("type", "text").put("text", prompt))
+                            .put(
+                                JSONObject().put("type", "image_url").put(
+                                    "image_url",
+                                    JSONObject().put("url", "data:image/jpeg;base64," + Base64.encodeToString(input, Base64.NO_WRAP))
+                                )
+                            )
+                    )
+                )
+            )
         val req = Request.Builder()
             .url("https://openrouter.ai/api/v1/chat/completions")
             .header("Authorization", "Bearer $token")

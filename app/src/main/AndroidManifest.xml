@@ -4,6 +4,8 @@
 
     <!-- Network: remote LLM endpoints, Hugging Face downloads, live web search -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Voice mode: on-device speech recognition -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Keep the CPU awake during long local inference and model downloads -->
@@ -116,6 +118,11 @@
 
 
         <!-- Keeps a long local generation alive when the app is in the background -->
+        <service
+            android:name=".service.TelegramService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service
             android:name=".service.AgentForegroundService"
             android:exported="false"

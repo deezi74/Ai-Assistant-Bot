@@ -64,6 +64,8 @@ data class AppSettings(
     val appBuilder: Boolean = true,
     /** Lets the agent run commands in the user's Termux. */
     val termuxEnabled: Boolean = false,
+    /** Runs the Telegram bot bridge. */
+    val telegramEnabled: Boolean = false,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -161,6 +163,7 @@ class SecureSettings(context: Context) : CredentialStore {
             calendarCanWrite = prefs.getBoolean("calendar_can_write", d.calendarCanWrite),
             appBuilder = prefs.getBoolean("app_builder", d.appBuilder),
             termuxEnabled = prefs.getBoolean("termux_enabled", d.termuxEnabled),
+            telegramEnabled = prefs.getBoolean("telegram_enabled", d.telegramEnabled),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -210,6 +213,7 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("calendar_can_write", next.calendarCanWrite)
             .putBoolean("app_builder", next.appBuilder)
             .putBoolean("termux_enabled", next.termuxEnabled)
+            .putBoolean("telegram_enabled", next.telegramEnabled)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
@@ -259,6 +263,28 @@ class SecureSettings(context: Context) : CredentialStore {
     var githubClientId: String
         get() = prefs.getString("github_client_id", null)?.takeIf { it.isNotBlank() } ?: dev.pocketagent.BuildConfig.GITHUB_CLIENT_ID
         set(value) = prefs.edit().putString("github_client_id", value.trim()).apply()
+
+    /** Telegram bot token from @BotFather. */
+    var telegramToken: String?
+        get() = secret("token_telegram")
+        set(value) = putSecret("token_telegram", value)
+
+    /** The one Telegram chat allowed to talk to the bot (paired with a code). */
+    var telegramChatId: Long?
+        get() = prefs.getLong("telegram_chat_id", 0L).takeIf { it != 0L }
+        set(value) = prefs.edit().apply { if (value == null) remove("telegram_chat_id") else putLong("telegram_chat_id", value) }.apply()
+
+    var telegramPairCode: String?
+        get() = prefs.getString("telegram_pair_code", null)
+        set(value) = prefs.edit().apply { if (value == null) remove("telegram_pair_code") else putString("telegram_pair_code", value) }.apply()
+
+    var telegramOffset: Long
+        get() = prefs.getLong("telegram_offset", 0L)
+        set(value) = prefs.edit().putLong("telegram_offset", value).apply()
+
+    var telegramConversationId: Long?
+        get() = prefs.getLong("telegram_conversation", 0L).takeIf { it != 0L }
+        set(value) = prefs.edit().apply { if (value == null) remove("telegram_conversation") else putLong("telegram_conversation", value) }.apply()
 
     /** Repos the app builder created ("owner/name"); it only ever writes to these. */
     var builtApps: Set<String>

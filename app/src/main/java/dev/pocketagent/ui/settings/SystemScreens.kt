@@ -185,6 +185,11 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
         ) { viewModel.push("google") }
         ConnectorCard(
+            "Telegram",
+            if (settings.telegramEnabled) "On · chat with ${settings.assistantName} from Telegram" else "Off",
+            connected = settings.telegramEnabled, action = "Set up"
+        ) { viewModel.push("telegram") }
+        ConnectorCard(
             "Termux",
             if (settings.termuxEnabled) "On · runs commands and builds apps on the phone" else "Off",
             connected = settings.termuxEnabled, action = "Set up"
@@ -341,6 +346,54 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ).forEach { example ->
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
         }
+    }
+}
+
+@Composable
+fun TelegramConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val status by viewModel.telegramStatus.collectAsStateWithLifecycle()
+    val note by viewModel.telegramNote.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var token by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf(false) }
+    val hasToken = remember(note, status) { viewModel.hasTelegramToken }
+    val paired = remember(note, status) { viewModel.telegramPaired }
+
+    SubScreen("Telegram", onBack) {
+        Hint("Chat with ${settings.assistantName} from Telegram on any device. It uses your own bot and answers only your Telegram account. Replies come from this phone, so it has to be on and online.")
+        SectionTitle("Step 1: make a bot")
+        Hint("In Telegram, open @BotFather, send /newbot, pick a name, and copy the token it gives you.")
+        OutlinedButton(onClick = { openUrl(context, "https://t.me/BotFather") }) { Text("Open BotFather") }
+        SecretField(token, { token = it.trim() }, if (hasToken) "Bot token (saved)" else "Bot token")
+        Button(
+            onClick = { viewModel.saveTelegramToken(token); token = "" },
+            enabled = token.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+        ) { Text("Connect bot") }
+        note?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+
+        if (hasToken) {
+            SectionTitle("Step 2: pair your account")
+            if (paired) {
+                Hint("Paired with your Telegram account.", Palette.Success)
+                OutlinedButton(onClick = { viewModel.unpairTelegram() }) { Text("Pair a different account") }
+            } else {
+                Hint("Open your bot in Telegram and send this message:")
+                val line = "/start ${viewModel.telegramPairCode}"
+                SurfaceCard(onClick = { copy(context, line) }) {
+                    Text(line, fontFamily = Mono, style = MaterialTheme.typography.titleMedium)
+                    Hint("Tap to copy")
+                }
+            }
+            SectionTitle("Bot")
+            SwitchRow("Telegram bot on", "Status: $status", settings.telegramEnabled) { on -> viewModel.setTelegram(on) }
+            Hint("While it's on you'll see a notification. Turn off battery optimization for TruAgent so Android doesn't pause it. Telegram chats are saved as a \"Telegram\" chat in the app.")
+            OutlinedButton(onClick = { removing = true }) { Text("Remove bot") }
+        }
+    }
+    if (removing) {
+        ConfirmDialog("Remove the Telegram bot?", "The token is deleted from this phone and the bot stops answering.", "Remove", { viewModel.removeTelegram() }, { removing = false })
     }
 }
 
