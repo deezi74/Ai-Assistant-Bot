@@ -58,6 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.pocketagent.BuildConfig
+import dev.pocketagent.agent.TermuxBridge
 import dev.pocketagent.core.tools.SearchBackend
 import dev.pocketagent.ui.AppTextField
 import dev.pocketagent.ui.AppViewModel
@@ -183,6 +184,11 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             },
             connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
         ) { viewModel.push("google") }
+        ConnectorCard(
+            "Termux",
+            if (settings.termuxEnabled) "On · runs commands and builds apps on the phone" else "Off",
+            connected = settings.termuxEnabled, action = "Set up"
+        ) { viewModel.push("termux") }
         ConnectorCard(
             "GitHub",
             if (viewModel.hasGithubToken) (if (settings.githubCanWrite) "Connected · read, open issues and comment" else "Connected · read only") else "Not connected",
@@ -335,6 +341,53 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ).forEach { example ->
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
         }
+    }
+}
+
+@Composable
+fun TermuxConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val status by viewModel.termuxStatus.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val tick = rememberResumeTick()
+    val installed = remember(tick) { viewModel.termuxInstalled() }
+    var permitted by remember(tick) { mutableStateOf(viewModel.termuxPermitted()) }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
+        permitted = ok
+        if (ok) viewModel.updateSettings { it.copy(termuxEnabled = true) }
+    }
+
+    SubScreen("Termux", onBack) {
+        Hint("Lets ${settings.assistantName} run commands in your Termux: install packages, run scripts and servers like FreeLLMAPI, and build simple Android apps right on the phone. Cloud builds through GitHub are faster and more reliable for big apps.")
+        PermissionCard("Termux installed", if (installed) "Found" else "Install Termux from F-Droid", installed) {
+            openUrl(context, "https://f-droid.org/packages/com.termux/")
+        }
+        SectionTitle("Step 1: allow outside apps in Termux")
+        Hint("Paste this in Termux once:")
+        val line = "mkdir -p ~/.termux && echo 'allow-external-apps=true' >> ~/.termux/termux.properties && termux-reload-settings"
+        SurfaceCard(onClick = { copy(context, line) }) {
+            Text(line, fontFamily = Mono, style = MaterialTheme.typography.bodySmall)
+            Hint("Tap to copy")
+        }
+        SectionTitle("Step 2: let TruAgent send commands")
+        PermissionCard("Run commands in Termux", "Android permission", permitted) { launcher.launch(TermuxBridge.PERMISSION) }
+        SectionTitle("Step 3: turn it on")
+        SwitchRow(
+            "Let ${settings.assistantName} use Termux",
+            "Commands run as you in Termux and can change files there. It explains what a command does before changing things, and refuses commands that would wipe your storage.",
+            settings.termuxEnabled && permitted
+        ) { on -> if (on && !permitted) launcher.launch(TermuxBridge.PERMISSION) else viewModel.updateSettings { it.copy(termuxEnabled = on) } }
+        if (installed && permitted) {
+            OutlinedButton(onClick = { viewModel.testTermux() }) { Text("Test the connection") }
+            status?.let { Hint(it, if (it.startsWith("Termux is connected")) Palette.Success else Palette.TextMuted) }
+        }
+        SectionTitle("Try saying")
+        listOf(
+            "Set up Termux so you can build Android apps",
+            "Build me a simple flashlight app on the phone",
+            "Start my FreeLLMAPI server",
+            "How much storage is Termux using?"
+        ).forEach { example -> SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) } }
     }
 }
 

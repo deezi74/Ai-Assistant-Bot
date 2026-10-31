@@ -25,8 +25,12 @@
         android:name="android.permission.WRITE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Termux connector: run commands in the user's Termux (user grants this, and Termux must allow external apps) -->
+    <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+
     <!-- Lets the phone tool find installed apps by name and hand off to dialer, maps and browser -->
     <queries>
+        <package android:name="com.termux" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />

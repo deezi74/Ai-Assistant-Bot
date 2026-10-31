@@ -62,6 +62,8 @@ data class AppSettings(
     val calendarCanWrite: Boolean = false,
     /** Lets the agent create private repos in the user's GitHub and build APKs there. */
     val appBuilder: Boolean = true,
+    /** Lets the agent run commands in the user's Termux. */
+    val termuxEnabled: Boolean = false,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -158,6 +160,7 @@ class SecureSettings(context: Context) : CredentialStore {
             githubCanWrite = prefs.getBoolean("github_can_write", d.githubCanWrite),
             calendarCanWrite = prefs.getBoolean("calendar_can_write", d.calendarCanWrite),
             appBuilder = prefs.getBoolean("app_builder", d.appBuilder),
+            termuxEnabled = prefs.getBoolean("termux_enabled", d.termuxEnabled),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -206,6 +209,7 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("github_can_write", next.githubCanWrite)
             .putBoolean("calendar_can_write", next.calendarCanWrite)
             .putBoolean("app_builder", next.appBuilder)
+            .putBoolean("termux_enabled", next.termuxEnabled)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)

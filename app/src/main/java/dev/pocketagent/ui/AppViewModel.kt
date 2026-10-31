@@ -632,6 +632,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val hasGithubToken: Boolean get() = container.github.hasToken()
     val builtApps: Set<String> get() = container.settings.builtApps
 
+    // Termux
+
+    fun termuxInstalled(): Boolean = container.termux.isInstalled()
+    fun termuxPermitted(): Boolean = container.termux.hasPermission()
+    private val _termuxStatus = MutableStateFlow<String?>(null)
+    val termuxStatus: StateFlow<String?> = _termuxStatus.asStateFlow()
+
+    fun testTermux() = viewModelScope.launch {
+        _termuxStatus.value = "Asking Termux…"
+        val r = container.termux.run("echo \"Termux is connected: \$(uname -m), \$(node --version 2>/dev/null || echo no node)\"", 20_000)
+        _termuxStatus.value = r.error ?: r.stdout.trim().ifBlank { "Termux answered with exit code ${r.exitCode}." }
+    }
+
     fun saveGithubToken(token: String?) {
         container.settings.githubToken = token?.trim()
         if (token.isNullOrBlank()) {

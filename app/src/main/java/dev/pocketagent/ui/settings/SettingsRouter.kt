@@ -78,6 +78,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "location" -> LocationConnectorScreen(viewModel, back)
             "github" -> GitHubConnectorScreen(viewModel, back)
             "google" -> GoogleConnectorScreen(viewModel, back)
+            "termux" -> TermuxConnectorScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)

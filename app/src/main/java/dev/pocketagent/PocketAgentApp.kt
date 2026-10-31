@@ -19,6 +19,8 @@ import dev.pocketagent.core.tools.GoogleApi
 import dev.pocketagent.core.tools.GoogleCalendarTool
 import dev.pocketagent.core.tools.GoogleDriveTool
 import dev.pocketagent.agent.GoogleAuth
+import dev.pocketagent.agent.TermuxBridge
+import dev.pocketagent.agent.TermuxTool
 import dev.pocketagent.agent.LearnSkillTool
 import dev.pocketagent.agent.Learner
 import dev.pocketagent.agent.PhoneTool
@@ -129,6 +131,7 @@ class AppContainer(val app: PocketAgentApp) {
     val location = DeviceLocation(app) { settings.current.shareLocation }
     val places = PlacesClient(googleKey = { settings.googlePlacesKey })
     val googleAuth = GoogleAuth(app, settings)
+    val termux = TermuxBridge(app)
     val google = GoogleApi(googleAuth)
     val email = EmailClient(settings, googleAuth)
     val github = GitHubClient(token = { settings.githubToken })
@@ -155,6 +158,7 @@ class AppContainer(val app: PocketAgentApp) {
             ),
             OnlineOnlyTool(GoogleCalendarTool(google, { settings.current.calendarCanWrite }), offline),
             OnlineOnlyTool(GoogleDriveTool(google), offline),
+            TermuxTool(termux) { settings.current.termuxEnabled },
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },
