@@ -23,7 +23,7 @@ data class Skill(val fileName: String, val name: String, val description: String
 data class LogLine(val time: Long, val level: String, val text: String)
 
 /**
- * File-backed stores that sit next to the Room database: memory.md, skills/*.md,
+ * File-backed stores that sit next to the Room database: memory.md, skills (one .md each),
  * Library files, media, the custom avatar photo and an in-memory log ring.
  */
 class Workspace(private val context: Context) {

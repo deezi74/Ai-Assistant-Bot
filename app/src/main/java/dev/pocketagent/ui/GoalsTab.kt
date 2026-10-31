@@ -281,7 +281,7 @@ private fun RoutineDialog(initial: RoutineEntity, onSave: (RoutineEntity) -> Uni
                 }
                 if (repeat == "weekly") {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        DayOfWeek.entries.forEach { d ->
+                        DayOfWeek.values().forEach { d ->
                             FilterChip(
                                 selected = day == d.value, onClick = { day = d.value },
                                 label = { Text(d.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
