@@ -47,9 +47,14 @@ data class EmailPreset(val id: String, val label: String, val host: String, val 
  * moving to Trash or archiving is allowed only while "Let it organize" is on.
  * Nothing is ever permanently deleted: Trash keeps mail for about 30 days.
  */
-class EmailClient(private val settings: SecureSettings) {
+class EmailClient(private val settings: SecureSettings, private val google: GoogleAuth? = null) {
 
-    val accounts: List<EmailAccount> get() = settings.emailAccounts
+    /** App-password accounts plus Gmail accounts from Sign in with Google (which win on the same address). */
+    val accounts: List<EmailAccount>
+        get() {
+            val oauth = settings.googleAccounts.map { EmailAccount("imap.gmail.com", 993, it, "", oauth = true) }
+            return oauth + settings.emailAccounts.filterNot { a -> oauth.any { it.user.equals(a.user, ignoreCase = true) } }
+        }
 
     /** The account whose address contains [hint], or the only one; null when it is ambiguous. */
     fun pick(hint: String?): EmailAccount? {
@@ -59,6 +64,18 @@ class EmailClient(private val settings: SecureSettings) {
     }
 
     fun <T> withFolder(acc: EmailAccount, name: String = "INBOX", write: Boolean = false, block: (Store, IMAPFolder) -> T): T {
+        if (!acc.oauth) return open(acc, acc.password, name, write, block)
+        val auth = google ?: throw IllegalStateException("Google sign-in is unavailable")
+        val token = auth.tokenBlocking(acc.user)
+        return try {
+            open(acc, token, name, write, block)
+        } catch (e: javax.mail.AuthenticationFailedException) {
+            auth.invalidate(acc.user, token)
+            open(acc, auth.tokenBlocking(acc.user), name, write, block)
+        }
+    }
+
+    private fun <T> open(acc: EmailAccount, secret: String, name: String, write: Boolean, block: (Store, IMAPFolder) -> T): T {
         val props = Properties().apply {
             put("mail.store.protocol", "imaps")
             put("mail.imaps.host", acc.host)
@@ -68,9 +85,14 @@ class EmailClient(private val settings: SecureSettings) {
             put("mail.imaps.connectiontimeout", "15000")
             put("mail.imaps.timeout", "25000")
             put("mail.imaps.writetimeout", "15000")
+            if (acc.oauth) {
+                put("mail.imaps.auth.mechanisms", "XOAUTH2")
+                put("mail.imaps.auth.login.disable", "true")
+                put("mail.imaps.auth.plain.disable", "true")
+            }
         }
         val store = Session.getInstance(props).getStore("imaps")
-        store.connect(acc.host, acc.port, acc.user, acc.password)
+        store.connect(acc.host, acc.port, acc.user, secret)
         try {
             val folder = store.getFolder(name) as IMAPFolder
             if (!folder.exists()) throw IllegalArgumentException("no folder named \"$name\"")

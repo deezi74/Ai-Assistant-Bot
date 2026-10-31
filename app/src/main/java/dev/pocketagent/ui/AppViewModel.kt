@@ -518,6 +518,114 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         toast(if (key.isNullOrBlank()) "Google Places key removed, using OpenStreetMap" else "Google Places key saved")
     }
 
+    // Sign in with Google
+
+    private val _googleAccounts = MutableStateFlow(container.settings.googleAccounts)
+    val googleAccounts: StateFlow<List<String>> = _googleAccounts.asStateFlow()
+    private val _googleStatus = MutableStateFlow<String?>(null)
+    val googleStatus: StateFlow<String?> = _googleStatus.asStateFlow()
+    private val _googleConsent = MutableStateFlow<Pair<String, android.content.Intent>?>(null)
+    /** Google's approval screen to show for an account; the screen launches it and calls [connectGoogle] again. */
+    val googleConsent: StateFlow<Pair<String, android.content.Intent>?> = _googleConsent.asStateFlow()
+
+    fun connectGoogle(account: String) {
+        val address = account.trim()
+        if (address.isEmpty()) return
+        _googleConsent.value = null
+        _googleStatus.value = "Asking Google for access to $address…"
+        viewModelScope.launch {
+            try {
+                val consent = container.googleAuth.authorize(address)
+                if (consent != null) {
+                    _googleConsent.value = address to consent
+                    _googleStatus.value = "Approve access for $address on the Google screen."
+                } else {
+                    container.settings.googleAccounts = container.settings.googleAccounts + address
+                    _googleAccounts.value = container.settings.googleAccounts
+                    _googleStatus.value = "Connected $address: Gmail, Calendar and Drive."
+                }
+            } catch (e: Exception) {
+                _googleStatus.value = e.message ?: "Google sign-in failed"
+            }
+        }
+    }
+
+    fun googleConsentFinished(account: String, approved: Boolean) {
+        _googleConsent.value = null
+        if (approved) connectGoogle(account) else _googleStatus.value = "Access for $account wasn't approved."
+    }
+
+    fun disconnectGoogle(account: String) {
+        container.googleAuth.forget(account)
+        container.settings.googleAccounts = container.settings.googleAccounts.filterNot { it.equals(account, ignoreCase = true) }
+        _googleAccounts.value = container.settings.googleAccounts
+        _googleStatus.value = "Removed $account. To fully revoke access, visit myaccount.google.com/permissions."
+    }
+
+    // Sign in with GitHub (device flow)
+
+    sealed interface GitHubSignIn {
+        data object Idle : GitHubSignIn
+        data object Starting : GitHubSignIn
+        data class Waiting(val userCode: String, val url: String) : GitHubSignIn
+    }
+
+    private val deviceFlow = dev.pocketagent.core.tools.GitHubDeviceFlow()
+    private var githubJob: kotlinx.coroutines.Job? = null
+    private val _githubSignIn = MutableStateFlow<GitHubSignIn>(GitHubSignIn.Idle)
+    val githubSignIn: StateFlow<GitHubSignIn> = _githubSignIn.asStateFlow()
+    val githubClientId: String get() = container.settings.githubClientId
+
+    fun startGithubSignIn(clientId: String) {
+        val id = clientId.trim()
+        if (id.isEmpty()) {
+            _github.value = "Enter your GitHub OAuth app's Client ID first."
+            return
+        }
+        container.settings.githubClientId = id
+        githubJob?.cancel()
+        _githubSignIn.value = GitHubSignIn.Starting
+        githubJob = viewModelScope.launch {
+            try {
+                val code = deviceFlow.start(id)
+                _githubSignIn.value = GitHubSignIn.Waiting(code.userCode, code.verificationUri)
+                _github.value = "Enter the code on GitHub, then come back."
+                var interval = code.intervalSeconds.coerceAtLeast(5)
+                val deadline = System.currentTimeMillis() + code.expiresInSeconds * 1000L
+                while (System.currentTimeMillis() < deadline) {
+                    kotlinx.coroutines.delay(interval * 1000L)
+                    when (val r = deviceFlow.poll(id, code.deviceCode)) {
+                        is dev.pocketagent.core.tools.GitHubDeviceFlow.Poll.Token -> {
+                            _githubSignIn.value = GitHubSignIn.Idle
+                            container.settings.githubToken = r.token
+                            testGithub()
+                            return@launch
+                        }
+                        dev.pocketagent.core.tools.GitHubDeviceFlow.Poll.Pending -> Unit
+                        is dev.pocketagent.core.tools.GitHubDeviceFlow.Poll.SlowDown -> interval = r.intervalSeconds
+                        is dev.pocketagent.core.tools.GitHubDeviceFlow.Poll.Failed -> {
+                            _github.value = r.message
+                            _githubSignIn.value = GitHubSignIn.Idle
+                            return@launch
+                        }
+                    }
+                }
+                _github.value = "The code expired. Tap Sign in with GitHub again."
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _github.value = e.message ?: "GitHub sign-in failed"
+            }
+            _githubSignIn.value = GitHubSignIn.Idle
+        }
+    }
+
+    fun cancelGithubSignIn() {
+        githubJob?.cancel()
+        _githubSignIn.value = GitHubSignIn.Idle
+        _github.value = null
+    }
+
     private val _github = MutableStateFlow<String?>(null)
     /** "Connected as …" or an error, after saving or testing the GitHub token. */
     val githubStatus: StateFlow<String?> = _github.asStateFlow()

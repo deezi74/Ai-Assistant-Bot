@@ -14,8 +14,11 @@ android {
         applicationId = "dev.pocketagent"
         minSdk = 28
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6.0"
+        versionCode = 9
+        versionName = "1.7.0"
+
+        // Public OAuth app ID for "Sign in with GitHub" (device flow). Can also be entered in the app.
+        buildConfigField("String", "GITHUB_CLIENT_ID", "\"${System.getenv("TRUAGENT_GITHUB_CLIENT_ID") ?: ""}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -171,6 +174,9 @@ dependencies {
     // IMAP email connector (app-password sign-in)
     implementation(libs.android.mail)
     implementation(libs.android.activation)
+
+    // Sign in with Google (Gmail over IMAP XOAUTH2, Calendar, Drive)
+    implementation(libs.play.services.auth)
 
     // Coroutines + JSON
     implementation(libs.kotlinx.coroutines.android)

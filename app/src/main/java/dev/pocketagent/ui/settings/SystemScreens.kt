@@ -137,6 +137,7 @@ fun TokenUsageScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val emailAccounts by viewModel.emailAccounts.collectAsStateWithLifecycle()
+    val googleAccounts by viewModel.googleAccounts.collectAsStateWithLifecycle()
     val mounts by viewModel.mounts.collectAsStateWithLifecycle()
     SubScreen("Connectors", onBack) {
         Hint("Services the assistant can reach. Everything is off-device only when you use it.")
@@ -174,11 +175,20 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             connected = settings.shareLocation, action = "Set up"
         ) { viewModel.push("location") }
         ConnectorCard(
+            "Google (Gmail, Calendar, Drive)",
+            when (googleAccounts.size) {
+                0 -> "Not signed in"
+                1 -> googleAccounts[0]
+                else -> "${googleAccounts.size} accounts"
+            },
+            connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
+        ) { viewModel.push("google") }
+        ConnectorCard(
             "GitHub",
             if (viewModel.hasGithubToken) (if (settings.githubCanWrite) "Connected · read, open issues and comment" else "Connected · read only") else "Not connected",
             connected = viewModel.hasGithubToken, action = if (viewModel.hasGithubToken) "Manage" else "Connect"
         ) { viewModel.push("github") }
-        Hint("Calendar and contacts are not connected in this build.")
+        Hint("Contacts are not connected in this build.")
     }
 }
 
@@ -329,17 +339,128 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 }
 
 @Composable
+fun GoogleConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val accounts by viewModel.googleAccounts.collectAsStateWithLifecycle()
+    val status by viewModel.googleStatus.collectAsStateWithLifecycle()
+    val consent by viewModel.googleConsent.collectAsStateWithLifecycle()
+    var removing by remember { mutableStateOf<String?>(null) }
+    var pending by remember { mutableStateOf<String?>(null) }
+
+    val consentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        pending?.let { viewModel.googleConsentFinished(it, result.resultCode == android.app.Activity.RESULT_OK) }
+        pending = null
+    }
+    val chooser = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        result.data?.getStringExtra(android.accounts.AccountManager.KEY_ACCOUNT_NAME)?.let { viewModel.connectGoogle(it) }
+    }
+    LaunchedEffect(consent) {
+        consent?.let { (account, intent) ->
+            pending = account
+            consentLauncher.launch(intent)
+        }
+    }
+
+    SubScreen("Google", onBack) {
+        Hint("Sign in once and ${settings.assistantName} can use Gmail (read, search, archive, Trash), Google Calendar (what's coming up, and adding events if you allow it) and Google Drive (find and read Docs, Sheets and files). Add as many Google accounts as you like.")
+        SectionTitle("Signed in (${accounts.size})")
+        if (accounts.isEmpty()) Hint("No Google accounts yet.")
+        accounts.forEach { acc ->
+            SurfaceCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(acc, style = MaterialTheme.typography.titleMedium)
+                        Hint("Gmail · Calendar · Drive")
+                    }
+                    IconButton(onClick = { removing = acc }) { Icon(Icons.Filled.DeleteOutline, "Remove", tint = Palette.TextMuted) }
+                }
+            }
+        }
+        Button(
+            onClick = {
+                chooser.launch(
+                    android.accounts.AccountManager.newChooseAccountIntent(null, null, arrayOf("com.google"), null, null, null, null)
+                )
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+        ) { Text(if (accounts.isEmpty()) "Sign in with Google" else "Add another Google account") }
+        status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+
+        SectionTitle("Permissions")
+        SwitchRow(
+            "Let it organize Gmail",
+            "Archive, mark as read and move to Trash when you ask. Nothing is deleted permanently.",
+            settings.emailCanOrganize
+        ) { c -> viewModel.updateSettings { it.copy(emailCanOrganize = c) } }
+        SwitchRow(
+            "Let it add calendar events",
+            "Only when you ask, after it confirms the details with you.",
+            settings.calendarCanWrite
+        ) { c -> viewModel.updateSettings { it.copy(calendarCanWrite = c) } }
+        Hint("Drive is read only. Sign-in tokens stay with Google Play services on this phone and are never included in backups. Text from mail, events and files is treated as untrusted: instructions hidden in it are ignored. It never sends email.")
+
+        SectionTitle("First time? One-time Google setup")
+        Hint("Google only lets registered apps sign in. In Google Cloud console: create a project, enable the Gmail, Calendar and Drive APIs, set the OAuth consent screen to External / Testing with your addresses as test users, then create an Android OAuth client with package ${BuildConfig.APPLICATION_ID.removeSuffix(".debug")} and this app's SHA-1 signing fingerprint.")
+
+        SectionTitle("Try saying")
+        listOf("What's on my calendar today?", "Any important emails?", "Find my resume in Drive", "Add lunch with Sam tomorrow at noon").forEach { example ->
+            SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
+        }
+    }
+    removing?.let { acc ->
+        ConfirmDialog("Remove $acc?", "${settings.assistantName} stops using its Gmail, Calendar and Drive.", "Remove", { viewModel.disconnectGoogle(acc) }, { removing = null })
+    }
+}
+
+@Composable
 fun GitHubConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val status by viewModel.githubStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val signIn by viewModel.githubSignIn.collectAsStateWithLifecycle()
     var token by remember { mutableStateOf("") }
+    var clientId by remember { mutableStateOf(viewModel.githubClientId) }
     var removing by remember { mutableStateOf(false) }
     val connected = remember(status) { viewModel.hasGithubToken }
 
     SubScreen("GitHub", onBack) {
         Hint("${settings.assistantName} can check your repos, issues, pull requests and notifications, read files and search code. Ask things like \"what's new on GitHub?\" or \"summarize the open issues in owner/repo\".")
-        SectionTitle(if (connected) "Connected" else "Connect")
+        SectionTitle(if (connected) "Connected" else "Sign in")
+        when (val s = signIn) {
+            is AppViewModel.GitHubSignIn.Waiting -> SurfaceCard {
+                Text("Your code", style = MaterialTheme.typography.labelMedium, color = Palette.TextMuted)
+                Text(s.userCode, style = MaterialTheme.typography.headlineMedium, fontFamily = Mono)
+                Hint("Open GitHub, paste this code and approve. This screen finishes by itself.")
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { copy(context, s.userCode); openUrl(context, s.url) },
+                        colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+                    ) { Text("Copy code & open GitHub") }
+                    OutlinedButton(onClick = { viewModel.cancelGithubSignIn() }) { Text("Cancel") }
+                }
+            }
+            else -> {
+                if (viewModel.githubClientId.isBlank()) {
+                    Hint("One-time setup: create an OAuth app on GitHub (Settings ▸ Developer settings ▸ OAuth Apps), tick Enable Device Flow, and paste its Client ID here. It isn't a secret.")
+                    OutlinedButton(onClick = { openUrl(context, "https://github.com/settings/applications/new") }) { Text("Create the OAuth app") }
+                    AppTextField(clientId, { clientId = it.trim() }, "OAuth app Client ID")
+                }
+                Button(
+                    onClick = { viewModel.startGithubSignIn(clientId.ifBlank { viewModel.githubClientId }) },
+                    enabled = signIn !is AppViewModel.GitHubSignIn.Starting,
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+                ) { Text(if (connected) "Sign in again with GitHub" else "Sign in with GitHub") }
+            }
+        }
+        status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+        if (connected) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { viewModel.testGithub() }) { Text("Test") }
+                OutlinedButton(onClick = { removing = true }) { Text("Disconnect") }
+            }
+        }
+
+        SectionTitle("Or use a token")
         Hint("Create a fine-grained personal access token. For reading, give it Contents, Issues, Pull requests and Metadata read access on the repos you want. Add Issues write access only if you turn on writing below. Notifications need a classic token with the notifications scope.")
         OutlinedButton(onClick = { openUrl(context, "https://github.com/settings/personal-access-tokens/new") }) { Text("Create a token on GitHub") }
         SecretField(token, { token = it.trim() }, if (connected) "Personal access token (saved)" else "Personal access token")
@@ -349,12 +470,7 @@ fun GitHubConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                 enabled = token.isNotBlank(),
                 colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
             ) { Text("Save & test") }
-            if (connected) {
-                OutlinedButton(onClick = { viewModel.testGithub() }) { Text("Test") }
-                OutlinedButton(onClick = { removing = true }) { Text("Disconnect") }
-            }
         }
-        status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
 
         SectionTitle("Permissions")
         SwitchRow(

@@ -58,6 +58,8 @@ data class AppSettings(
     val emailCanOrganize: Boolean = true,
     /** Lets the GitHub tool open issues and post comments (reading is always allowed). */
     val githubCanWrite: Boolean = false,
+    /** Lets the calendar tool add events to Google Calendar. */
+    val calendarCanWrite: Boolean = false,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -152,6 +154,7 @@ class SecureSettings(context: Context) : CredentialStore {
             shareLocation = prefs.getBoolean("share_location", d.shareLocation),
             emailCanOrganize = prefs.getBoolean("email_can_organize", d.emailCanOrganize),
             githubCanWrite = prefs.getBoolean("github_can_write", d.githubCanWrite),
+            calendarCanWrite = prefs.getBoolean("calendar_can_write", d.calendarCanWrite),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -198,6 +201,7 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("share_location", next.shareLocation)
             .putBoolean("email_can_organize", next.emailCanOrganize)
             .putBoolean("github_can_write", next.githubCanWrite)
+            .putBoolean("calendar_can_write", next.calendarCanWrite)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
@@ -242,6 +246,16 @@ class SecureSettings(context: Context) : CredentialStore {
     var githubToken: String?
         get() = secret("token_github")
         set(value) = putSecret("token_github", value)
+
+    /** OAuth app Client ID for "Sign in with GitHub" (public, not a secret). */
+    var githubClientId: String
+        get() = prefs.getString("github_client_id", null)?.takeIf { it.isNotBlank() } ?: dev.pocketagent.BuildConfig.GITHUB_CLIENT_ID
+        set(value) = prefs.edit().putString("github_client_id", value.trim()).apply()
+
+    /** Google accounts signed in with "Sign in with Google" (addresses only; tokens stay with Play services). */
+    var googleAccounts: List<String>
+        get() = prefs.getString("google_accounts", null).orEmpty().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        set(value) = prefs.edit().putString("google_accounts", value.distinct().joinToString("\n")).apply()
 
     /** IMAP accounts for the email tool, stored as one encrypted JSON value. */
     var emailAccounts: List<EmailAccount>
@@ -340,4 +354,5 @@ class SecureSettings(context: Context) : CredentialStore {
     }
 }
 
-data class EmailAccount(val host: String, val port: Int, val user: String, val password: String)
+/** [oauth] accounts come from Sign in with Google and use XOAUTH2 instead of a password. */
+data class EmailAccount(val host: String, val port: Int, val user: String, val password: String, val oauth: Boolean = false)

@@ -77,6 +77,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "email" -> EmailConnectorScreen(viewModel, back)
             "location" -> LocationConnectorScreen(viewModel, back)
             "github" -> GitHubConnectorScreen(viewModel, back)
+            "google" -> GoogleConnectorScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)

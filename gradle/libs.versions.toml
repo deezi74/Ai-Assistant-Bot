@@ -20,6 +20,7 @@ documentfile = "1.0.1"
 exifinterface = "1.3.7"
 rhino = "1.7.15"
 javamail = "1.6.7"
+playServicesAuth = "21.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -55,6 +56,7 @@ androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterfa
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 rhino = { group = "org.mozilla", name = "rhino", version.ref = "rhino" }
 android-mail = { group = "com.sun.mail", name = "android-mail", version.ref = "javamail" }
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 android-activation = { group = "com.sun.mail", name = "android-activation", version.ref = "javamail" }
 
 [plugins]
