@@ -1,6 +1,14 @@
 package dev.pocketagent.ui
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,9 +22,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,31 +37,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Terminal
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -68,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -82,133 +80,140 @@ import dev.pocketagent.core.agent.AgentMode
 import dev.pocketagent.llm.LocalModelState
 import dev.pocketagent.ui.theme.Mono
 import dev.pocketagent.ui.theme.Palette
+import java.io.File
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val starterPrompts = listOf(
+    "Plan my day around three priorities",
+    "What's happening in tech today?",
+    "Roast my to-do list",
+    "Explain something I should know by now"
+)
+
 @Composable
-fun ChatScreen(viewModel: ChatViewModel) {
+fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -> Unit) {
     val chat by viewModel.chat.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val local by viewModel.localState.collectAsStateWithLifecycle()
-    val toast by viewModel.toast.collectAsStateWithLifecycle()
+    val draft by viewModel.draft.collectAsStateWithLifecycle()
+    val pending by viewModel.pendingImage.collectAsStateWithLifecycle()
+    val avatarVersion by viewModel.avatarVersion.collectAsStateWithLifecycle()
 
     var input by rememberSaveable { mutableStateOf("") }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
-    var showTerminal by rememberSaveable { mutableStateOf(true) }
-    val snackbar = remember { SnackbarHostState() }
     val accent = if (settings.mode == AgentMode.WIT) Palette.Accent else Palette.Research
 
-    LaunchedEffect(toast) {
-        toast?.let {
-            snackbar.showSnackbar(it)
-            viewModel.consumeToast()
+    LaunchedEffect(draft) {
+        draft?.let {
+            input = it
+            viewModel.consumeDraft()
         }
     }
 
-    Scaffold(
-        containerColor = Palette.Background,
-        snackbarHost = { SnackbarHost(snackbar) },
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Palette.Background),
-                title = {
-                    Column {
-                        Text("PocketAgent", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = modelLabel(local, chat.providerLabel),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Palette.TextMuted,
-                            maxLines = 1
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) viewModel.attachImage(uri)
+    }
+    val speech = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val heard = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+            if (!heard.isNullOrBlank()) input = (input.trimEnd() + " " + heard).trim()
+        }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val maxWidthPx = constraints.maxWidth.toFloat()
+        val maxHeightPx = constraints.maxHeight.toFloat()
+        Column(Modifier.fillMaxSize()) {
+            if (chat.items.isEmpty()) {
+                EmptyChat(
+                    name = settings.assistantName,
+                    status = modelLabel(local, chat.providerLabel),
+                    onPick = { input = it },
+                    modifier = Modifier.weight(1f),
+                    avatar = {
+                        AssistantAvatar(
+                            settings.avatarKind, settings.avatarValue, settings.assistantName,
+                            viewModel.avatarPhoto(settings), 96.dp, photoVersion = avatarVersion
                         )
                     }
-                },
-                actions = {
-                    IconButton(onClick = { showTerminal = !showTerminal }) {
-                        Icon(Icons.Filled.Terminal, "Toggle agent terminal", tint = if (showTerminal) accent else Palette.TextMuted)
+                )
+            } else {
+                MessageList(chat.items, accent, Modifier.weight(1f))
+            }
+            pending?.let { file -> PendingAttachment(file, onRemove = viewModel::clearPendingImage) }
+            Composer(
+                value = input,
+                onValueChange = { input = it },
+                running = chat.running,
+                accent = accent,
+                placeholder = "Message ${settings.assistantName}",
+                canSend = input.isNotBlank() || pending != null,
+                onAttach = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onMic = {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                        .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        .putExtra(RecognizerIntent.EXTRA_PROMPT, "Talk to ${settings.assistantName}")
+                    try {
+                        speech.launch(intent)
+                    } catch (e: ActivityNotFoundException) {
+                        viewModel.toast("No speech recognizer is installed on this phone")
                     }
-                    IconButton(onClick = viewModel::newChat) { Icon(Icons.Filled.AddComment, "New chat") }
-                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Filled.Settings, "Settings") }
-                }
+                },
+                onSend = {
+                    viewModel.send(input)
+                    input = ""
+                },
+                onStop = viewModel::stop
             )
         }
-    ) { padding ->
-        BoxWithConstraints(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .imePadding()
-        ) {
-            val maxWidthPx = constraints.maxWidth.toFloat()
-            val maxHeightPx = constraints.maxHeight.toFloat()
 
-            Column(Modifier.fillMaxSize()) {
-                ModeToggle(settings.mode, onSelect = viewModel::setMode)
-                MessageList(chat.items, accent, Modifier.weight(1f))
-                InputBar(
-                    value = input,
-                    onValueChange = { input = it },
-                    running = chat.running,
-                    accent = accent,
-                    placeholder = if (settings.mode == AgentMode.WIT) "Ask anything. Expect opinions." else "What should I research?",
-                    onSend = {
-                        viewModel.send(input)
-                        input = ""
-                    },
-                    onStop = viewModel::stop
-                )
-            }
-
-            AnimatedVisibility(visible = showTerminal && (chat.terminal.isNotEmpty() || chat.running)) {
-                AgentTerminal(
-                    lines = chat.terminal,
-                    running = chat.running,
-                    step = chat.step,
-                    maxWidthPx = maxWidthPx,
-                    maxHeightPx = maxHeightPx,
-                    onClear = viewModel::clearTerminal,
-                    onClose = { showTerminal = false }
-                )
-            }
+        AnimatedVisibility(visible = showTerminal && settings.showTerminal && (chat.terminal.isNotEmpty() || chat.running)) {
+            AgentTerminal(
+                lines = chat.terminal,
+                running = chat.running,
+                step = chat.step,
+                maxWidthPx = maxWidthPx,
+                maxHeightPx = maxHeightPx,
+                onClear = viewModel::clearTerminal,
+                onClose = onHideTerminal
+            )
         }
     }
-
-    if (showSettings) {
-        SettingsSheet(viewModel = viewModel, onDismiss = { showSettings = false })
-    }
 }
 
-private fun modelLabel(local: LocalModelState, provider: String): String = when {
+fun modelLabel(local: LocalModelState, provider: String): String = when {
     provider.isNotBlank() -> provider
-    local is LocalModelState.Ready -> "Local · ${local.fileName} · ${local.contextSize} ctx"
+    local is LocalModelState.Ready -> "On-device · ${local.fileName}"
     local is LocalModelState.Loading -> "Loading ${local.fileName}…"
     local is LocalModelState.Error -> "Model error: ${local.message}"
-    else -> "No model loaded · open Settings"
+    else -> "No model yet · Settings ▸ Models"
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ModeToggle(mode: AgentMode, onSelect: (AgentMode) -> Unit) {
-    val modes = AgentMode.entries
-    SingleChoiceSegmentedButtonRow(
-        Modifier
+private fun EmptyChat(name: String, status: String, onPick: (String) -> Unit, modifier: Modifier, avatar: @Composable () -> Unit) {
+    Column(
+        modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        modes.forEachIndexed { index, m ->
-            val color = if (m == AgentMode.WIT) Palette.Accent else Palette.Research
-            SegmentedButton(
-                selected = m == mode,
-                onClick = { onSelect(m) },
-                shape = SegmentedButtonDefaults.itemShape(index, modes.size),
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = if (m == AgentMode.WIT) Palette.AccentSoft else Palette.ResearchSoft,
-                    activeContentColor = color,
-                    activeBorderColor = color,
-                    inactiveContainerColor = Palette.Surface,
-                    inactiveContentColor = Palette.TextMuted,
-                    inactiveBorderColor = Palette.Outline
-                ),
-                label = { Text(if (m == AgentMode.WIT) "Wit mode" else "Research mode") }
+        avatar()
+        Spacer(Modifier.height(16.dp))
+        Text("Hey, I'm $name.", style = MaterialTheme.typography.headlineSmall)
+        Spacer(Modifier.height(4.dp))
+        Text(status, style = MaterialTheme.typography.labelSmall, color = Palette.TextMuted)
+        Spacer(Modifier.height(24.dp))
+        starterPrompts.forEach { p ->
+            Text(
+                text = p,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .padding(vertical = 4.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Palette.Surface)
+                    .border(1.dp, Palette.Outline, RoundedCornerShape(20.dp))
+                    .clickable { onPick(p) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
             )
         }
     }
@@ -221,16 +226,6 @@ private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier
     LaunchedEffect(items.size, lastLength) {
         if (items.isNotEmpty()) listState.animateScrollToItem(items.size - 1)
     }
-    if (items.isEmpty()) {
-        Box(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                Text("⬡", fontSize = 44.sp, color = accent)
-                Spacer(Modifier.size(8.dp))
-                Text("Local brain. Live web. Zero filter on the jokes.", color = Palette.TextMuted)
-            }
-        }
-        return
-    }
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxWidth(),
@@ -239,57 +234,75 @@ private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier
     ) {
         items(items, key = { it.id }) { item ->
             when (item.role) {
-                ItemRole.USER -> Bubble(item.text, Palette.SurfaceHigh, Alignment.CenterEnd, Palette.Text)
+                ItemRole.USER -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                    item.imagePath?.let { path -> ChatImage(File(path)) }
+                    Bubble(item.text, Palette.SurfaceHigh, Alignment.CenterEnd, Palette.Text)
+                }
                 ItemRole.ASSISTANT -> Bubble(
                     text = if (item.streaming && item.text.isEmpty()) "▍" else item.text + if (item.streaming) "▍" else "",
-                    background = Palette.Surface,
+                    background = Color.Transparent,
                     alignment = Alignment.CenterStart,
                     color = if (item.isError) Palette.Error else Palette.Text,
-                    border = accent.copy(alpha = 0.35f)
+                    border = null
                 )
-                ItemRole.TOOL -> ToolChip(item)
+                ItemRole.TOOL -> ToolChip(item, accent)
             }
         }
     }
 }
 
 @Composable
+private fun ChatImage(file: File) {
+    val image = rememberFileImage(file, maxDim = 720)
+    if (image != null) {
+        Image(
+            bitmap = image,
+            contentDescription = "Attached image",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .padding(bottom = 4.dp)
+                .size(180.dp)
+                .clip(RoundedCornerShape(16.dp))
+        )
+    }
+}
+
+@Composable
 private fun Bubble(text: String, background: Color, alignment: Alignment, color: Color, border: Color? = null) {
     Box(Modifier.fillMaxWidth(), contentAlignment = alignment) {
-        val shape = RoundedCornerShape(16.dp)
+        val shape = RoundedCornerShape(20.dp)
         SelectionContainer {
             Text(
                 text = text,
                 color = color,
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier
-                    .widthIn(max = 340.dp)
+                    .widthIn(max = if (background == Color.Transparent) 600.dp else 320.dp)
                     .clip(shape)
                     .background(background)
                     .then(if (border != null) Modifier.border(1.dp, border, shape) else Modifier)
-                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                    .padding(horizontal = if (background == Color.Transparent) 4.dp else 16.dp, vertical = 10.dp)
             )
         }
     }
 }
 
 @Composable
-private fun ToolChip(item: ChatItem) {
+private fun ToolChip(item: ChatItem, accent: Color) {
     var expanded by remember { mutableStateOf(false) }
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Palette.Background)
-            .border(1.dp, Palette.Outline, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(Palette.Surface)
             .clickable { expanded = !expanded }
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "${if (item.isError) "✗" else "⚙"} ${item.toolName ?: "tool"}",
                 style = MaterialTheme.typography.labelSmall,
-                color = if (item.isError) Palette.Error else Palette.TerminalCyan,
+                color = if (item.isError) Palette.Error else accent,
                 modifier = Modifier.weight(1f)
             )
             Icon(
@@ -308,49 +321,100 @@ private fun ToolChip(item: ChatItem) {
 }
 
 @Composable
-private fun InputBar(
+private fun PendingAttachment(file: File, onRemove: () -> Unit) {
+    val image = rememberFileImage(file, maxDim = 256)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box {
+            if (image != null) {
+                Image(
+                    bitmap = image,
+                    contentDescription = "Image to send",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
+            } else {
+                Box(
+                    Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Palette.SurfaceHigh)
+                )
+            }
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 6.dp, y = (-6).dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Palette.SurfaceHigh)
+                    .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Filled.Close, "Remove image", modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Composer(
     value: String,
     onValueChange: (String) -> Unit,
     running: Boolean,
     accent: Color,
     placeholder: String,
+    canSend: Boolean,
+    onAttach: () -> Unit,
+    onMic: () -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(Palette.Surface)
+            .border(1.dp, Palette.Outline, RoundedCornerShape(28.dp))
+            .padding(horizontal = 4.dp, vertical = 4.dp),
         verticalAlignment = Alignment.Bottom
     ) {
-        OutlinedTextField(
+        IconButton(onClick = onAttach) { Icon(Icons.Filled.Add, "Attach image", tint = Palette.TextMuted) }
+        TextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = 52.dp, max = 160.dp),
+                .heightIn(min = 48.dp, max = 160.dp),
             placeholder = { Text(placeholder, color = Palette.TextMuted) },
-            shape = RoundedCornerShape(24.dp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = accent,
-                unfocusedBorderColor = Palette.Outline,
-                focusedContainerColor = Palette.Surface,
-                unfocusedContainerColor = Palette.Surface,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
                 cursorColor = accent
             )
         )
-        Spacer(Modifier.width(8.dp))
-        FilledIconButton(
-            onClick = if (running) onStop else onSend,
-            enabled = running || value.isNotBlank(),
-            modifier = Modifier.size(52.dp),
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = if (running) Palette.Error else accent,
-                contentColor = Color.Black
-            )
-        ) {
-            Icon(if (running) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send, if (running) "Stop" else "Send")
+        if (!running && !canSend) {
+            IconButton(onClick = onMic) { Icon(Icons.Filled.Mic, "Speak", tint = Palette.TextMuted) }
+        } else {
+            FilledIconButton(
+                onClick = if (running) onStop else onSend,
+                modifier = Modifier.size(48.dp),
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = if (running) Palette.Error else accent,
+                    contentColor = Color.Black
+                )
+            ) {
+                Icon(if (running) Icons.Filled.Stop else Icons.AutoMirrored.Filled.Send, if (running) "Stop" else "Send")
+            }
         }
     }
 }
@@ -370,7 +434,7 @@ private fun AgentTerminal(
     val panelWidth = 300.dp
     val panelWidthPx = with(density) { panelWidth.toPx() }
     var offsetX by remember { mutableFloatStateOf((maxWidthPx - panelWidthPx - with(density) { 12.dp.toPx() }).coerceAtLeast(0f)) }
-    var offsetY by remember { mutableFloatStateOf(with(density) { 64.dp.toPx() }) }
+    var offsetY by remember { mutableFloatStateOf(with(density) { 8.dp.toPx() }) }
     var collapsed by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val lastLen = lines.lastOrNull()?.text?.length ?: 0

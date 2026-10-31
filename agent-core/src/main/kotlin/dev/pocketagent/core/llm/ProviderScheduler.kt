@@ -66,7 +66,7 @@ class ProviderScheduler(
                     is LlmEvent.Done -> {
                         if (!failedEarly) emit(event)
                     }
-                    is LlmEvent.PromptProcessed -> emit(event)
+                    is LlmEvent.PromptProcessed, is LlmEvent.Usage -> emit(event)
                 }
             }
             if (!failedEarly) return@flow

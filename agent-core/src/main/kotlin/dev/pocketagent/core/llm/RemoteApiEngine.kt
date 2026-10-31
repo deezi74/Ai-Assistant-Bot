@@ -187,6 +187,9 @@ class RemoteApiEngine(
             put("temperature", params.temperature)
             put("top_p", params.topP)
             if (params.seed >= 0) put("seed", params.seed)
+            if (cfg.kind == RemoteKind.OPENROUTER || cfg.baseUrl.contains("api.openai.com")) {
+                putJsonObject("stream_options") { put("include_usage", true) }
+            }
             putJsonArray("messages") {
                 for (m in messages) {
                     addJsonObject {
@@ -317,6 +320,7 @@ class RemoteApiEngine(
             private set
         var generatedChunks = 0
             private set
+        private var anthropicInputTokens = 0
 
         fun onLine(rawLine: String): List<LlmEvent> {
             val line = rawLine.trimEnd('\r')
@@ -345,6 +349,11 @@ class RemoteApiEngine(
                 finished = true
                 finishReason = FinishReason.ERROR
                 return events
+            }
+            (obj["usage"] as? JsonObject)?.let { usage ->
+                val prompt = (usage["prompt_tokens"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                val completion = (usage["completion_tokens"] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                if (prompt != null || completion != null) events += LlmEvent.Usage(prompt ?: 0, completion ?: 0)
             }
             val choices = obj["choices"] as? JsonArray ?: return events
             val choice = choices.firstOrNull() as? JsonObject ?: return events
@@ -389,12 +398,18 @@ class RemoteApiEngine(
                 "message_start" -> {
                     val usage = (obj["message"] as? JsonObject)?.get("usage") as? JsonObject
                     val input = usage?.get("input_tokens")?.jsonPrimitive?.contentOrNull?.toIntOrNull()
-                    if (input != null) listOf(LlmEvent.PromptProcessed(input)) else emptyList()
+                    if (input != null) {
+                        anthropicInputTokens = input
+                        listOf(LlmEvent.PromptProcessed(input))
+                    } else {
+                        emptyList()
+                    }
                 }
                 "message_delta" -> {
                     val reason = ((obj["delta"] as? JsonObject)?.get("stop_reason") as? JsonPrimitive)?.contentOrNull
                     if (reason == "max_tokens") finishReason = FinishReason.LENGTH
-                    emptyList()
+                    val output = ((obj["usage"] as? JsonObject)?.get("output_tokens") as? JsonPrimitive)?.contentOrNull?.toIntOrNull()
+                    if (output != null) listOf(LlmEvent.Usage(anthropicInputTokens, output)) else emptyList()
                 }
                 "message_stop" -> {
                     finished = true

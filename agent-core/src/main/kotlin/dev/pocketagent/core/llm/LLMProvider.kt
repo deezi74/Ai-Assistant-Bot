@@ -43,6 +43,9 @@ sealed interface LlmEvent {
     /** Prompt evaluation stats, emitted once before the first token when known. */
     data class PromptProcessed(val promptTokens: Int) : LlmEvent
 
+    /** Token accounting reported by the backend (exact for local and most APIs). */
+    data class Usage(val promptTokens: Int, val completionTokens: Int) : LlmEvent
+
     data class Done(val reason: FinishReason, val generatedTokens: Int) : LlmEvent
 
     data class Failure(val message: String, val cause: Throwable? = null) : LlmEvent

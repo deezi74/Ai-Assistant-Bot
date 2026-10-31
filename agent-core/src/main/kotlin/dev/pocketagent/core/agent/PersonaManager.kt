@@ -46,8 +46,13 @@ class PersonaManager(
     @Synchronized
     fun resetSoul() = writeSoul(DEFAULT_SOUL)
 
-    fun buildSystemPrompt(mode: AgentMode, toolManifest: String): String = buildString {
+    /**
+     * [extraContext] carries app-owned sections (assistant name, memory, skills,
+     * tracked goals) that sit between the soul and the tool protocol.
+     */
+    fun buildSystemPrompt(mode: AgentMode, toolManifest: String, extraContext: String = ""): String = buildString {
         append(readSoul().trim())
+        if (extraContext.isNotBlank()) append("\n\n").append(extraContext.trim())
         append("\n\n## Current mode: ").append(mode.label).append('\n')
         append(if (mode == AgentMode.RESEARCH) RESEARCH_RULES else WIT_RULES)
         append("\n\n## Context\n")

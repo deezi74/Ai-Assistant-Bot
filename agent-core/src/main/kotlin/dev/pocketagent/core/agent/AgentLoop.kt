@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.JsonObject
 
 data class AgentConfig(
     val maxSteps: Int = 12,
@@ -30,6 +31,7 @@ sealed interface AgentEvent {
         val isError: Boolean,
         val hasImage: Boolean
     ) : AgentEvent
+    data class Usage(val provider: String, val promptTokens: Int, val completionTokens: Int) : AgentEvent
     data class Completed(val answer: String, val steps: Int) : AgentEvent
     data class Failed(val message: String) : AgentEvent
 }
@@ -47,15 +49,23 @@ class AgentLoop(
     private val provider: LLMProvider,
     private val tools: ToolRegistry,
     private val persona: PersonaManager,
-    private val config: AgentConfig = AgentConfig()
+    private val config: AgentConfig = AgentConfig(),
+    /** Rewrites tool arguments before execution, e.g. expanding $VAR environment variables. */
+    private val argumentTransformer: (JsonObject) -> JsonObject = { it }
 ) {
     private class ToolCallReached : CancellationException("tool call reached")
 
-    fun run(history: List<ChatMessage>, userMessage: String, mode: AgentMode): Flow<AgentEvent> = flow {
+    fun run(
+        history: List<ChatMessage>,
+        userMessage: String,
+        mode: AgentMode,
+        extraContext: String = "",
+        userImageJpegBase64: String? = null
+    ): Flow<AgentEvent> = flow {
         val messages = ArrayList<ChatMessage>()
-        messages += ChatMessage(ChatRole.SYSTEM, persona.buildSystemPrompt(mode, tools.manifest(mode)))
+        messages += ChatMessage(ChatRole.SYSTEM, persona.buildSystemPrompt(mode, tools.manifest(mode), extraContext))
         messages += history.filter { it.role != ChatRole.SYSTEM }
-        messages += ChatMessage(ChatRole.USER, userMessage)
+        messages += ChatMessage(ChatRole.USER, userMessage, userImageJpegBase64)
 
         for (step in 1..config.maxSteps) {
             val lastStep = step == config.maxSteps
@@ -73,6 +83,9 @@ class AgentLoop(
             var malformed: StreamSegment.MalformedCall? = null
             var failure: String? = null
             var finish = FinishReason.STOP
+            var promptTokens = 0
+            var completionTokens = -1
+            var generated = 0
 
             suspend fun handle(segments: List<StreamSegment>) {
                 for (segment in segments) {
@@ -98,14 +111,22 @@ class AgentLoop(
                         }
                         is LlmEvent.Reasoning -> emit(AgentEvent.ThoughtDelta(event.text))
                         is LlmEvent.Failure -> failure = event.message
-                        is LlmEvent.Done -> finish = event.reason
-                        is LlmEvent.PromptProcessed -> Unit
+                        is LlmEvent.Done -> {
+                            finish = event.reason
+                            generated = event.generatedTokens
+                        }
+                        is LlmEvent.PromptProcessed -> promptTokens = event.promptTokens
+                        is LlmEvent.Usage -> {
+                            if (event.promptTokens > 0) promptTokens = event.promptTokens
+                            completionTokens = event.completionTokens
+                        }
                     }
                 }
             } catch (stop: ToolCallReached) {
                 // Generation frozen at the closing tag; fall through to tool execution.
             }
             if (toolCall == null && malformed == null) handle(parser.finish())
+            emit(AgentEvent.Usage(provider.displayName, promptTokens, if (completionTokens >= 0) completionTokens else generated))
 
             val error = failure
             if (error != null && toolCall == null && malformed == null) {
@@ -143,7 +164,7 @@ class AgentLoop(
             )
             emit(AgentEvent.ToolCallStarted(step, call.name, call.arguments.toString()))
 
-            val result = executeTool(call, mode)
+            val result = executeTool(call.copy(arguments = argumentTransformer(call.arguments)), mode)
             val output = clip(result.output)
             val image = if (provider.supportsVision) result.imageJpegBase64 else null
             emit(AgentEvent.Observation(step, call.name, output, result.isError, image != null))

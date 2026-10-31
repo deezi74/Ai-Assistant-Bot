@@ -97,7 +97,7 @@ class ModelDownloadManager(private val context: Context) {
         ref to files
     }
 
-    fun enqueue(ref: HfReference, file: HfFile): UUID {
+    fun enqueue(ref: HfReference, file: HfFile, wifiOnly: Boolean = false): UUID {
         val fileName = file.path.substringAfterLast('/')
         val request = OneTimeWorkRequestBuilder<ModelDownloadWorker>()
             .setInputData(
@@ -107,7 +107,7 @@ class ModelDownloadManager(private val context: Context) {
                     KEY_EXPECTED to file.sizeBytes
                 )
             )
-            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED).build())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .addTag(TAG)
             .addTag(FILE_TAG_PREFIX + fileName)

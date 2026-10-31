@@ -6,6 +6,19 @@ An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls 
 - **Research mode**: sober, thorough, opens sources and cites them.
 - **Reason → Act → Observe loop**: the model emits `<tool_call>{"name": ..., "arguments": {...}}</tool_call>`; generation is frozen at the closing tag, the tool runs, and its raw output goes back as an `[Observation]` turn until the model answers without a tool call.
 
+## What's in the app
+
+- **Chat** with a main chat plus side chats (drawer: search, rename, archive, delete), image attachments, voice input through the phone's speech recognizer, Wit and Research modes and the floating agent terminal.
+- **Your assistant**: pick any name and one of 16 original avatars or your own photo (Settings ▸ Avatar & name, or tap the header). The name, what to call you, memory, enabled skills and open goals go into every prompt.
+- **Feed**: short posts the assistant writes from one steering sentence, tuned by likes and dislikes. A "Write the feed" routine runs every morning.
+- **Ideas**: ready-made prompts by category.
+- **Goals**: tracked goals (the assistant can add them with the `track_goal` tool), routines that run a prompt on a schedule and save the result to the Library, and goal categories to start a conversation.
+- **Library**: artifacts the assistant saves with `save_artifact`, your own notes, and media. Share or delete any file.
+- **Settings**: Models, Manage providers, Token usage, Soul, Memory, Skills, System files, Connectors, Environment variables (`$NAME` in tool arguments), Permissions, Background & notifications, Storage, Shared folders, Mount external folders (read-only `shared_files` tool), Backup & restore (zip without secrets), Appearance (accent, pure black, text size), Data controls, Network (offline mode, Wi-Fi-only downloads), Logs, App lock, Set as default assistant, About, Privacy policy.
+- Hands, Computers and Coding agents are listed but not available in this build.
+
+Upgrading from 1.1.0 resets chat history once because the database layout changed.
+
 ## Get the APK
 
 Every push to `main` builds a signed arm64-v8a APK in GitHub Actions and publishes it under **Releases** (tag `build-N`). On your phone:
