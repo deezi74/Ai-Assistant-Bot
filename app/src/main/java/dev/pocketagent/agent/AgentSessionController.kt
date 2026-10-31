@@ -44,7 +44,9 @@ data class ChatUiState(
     val terminal: List<TerminalLine> = emptyList(),
     val running: Boolean = false,
     val step: Int = 0,
-    val providerLabel: String = ""
+    val providerLabel: String = "",
+    /** What the agent is doing right now, for the animated avatar: thinking, writing, a tool name, or "phone:<action>". */
+    val activity: String? = null
 )
 
 /**
@@ -160,6 +162,7 @@ class AgentSessionController(private val container: AppContainer) {
                     ChatItem(answerId, ItemRole.ASSISTANT, "", streaming = true),
                 running = true,
                 step = 0,
+                activity = "thinking",
                 terminal = (it.terminal + TerminalLine(newId(), TerminalKind.SYSTEM, "▶ ${mode.label} · new task")).takeLast(MAX_TERMINAL_LINES)
             )
         }
@@ -203,6 +206,7 @@ class AgentSessionController(private val container: AppContainer) {
                 _state.update { s ->
                     s.copy(
                         running = false,
+                        activity = null,
                         items = s.items.map { if (it.id == answerId) it.copy(streaming = false, text = it.text.ifBlank { finalText }) else it }
                             .filterNot { it.id == answerId && it.text.isBlank() }
                     )
@@ -222,13 +226,14 @@ class AgentSessionController(private val container: AppContainer) {
         when (event) {
             is AgentEvent.StepStarted -> _state.update {
                 it.copy(
+                    activity = "thinking",
                     step = event.step,
                     providerLabel = event.provider,
                     terminal = (it.terminal + TerminalLine(newId(), TerminalKind.SYSTEM, "· step ${event.step} via ${event.provider}")).takeLast(MAX_TERMINAL_LINES)
                 )
             }
             is AgentEvent.AnswerDelta -> _state.update { s ->
-                s.copy(items = s.items.map { if (it.id == answerId) it.copy(text = it.text + event.text) else it })
+                s.copy(activity = "writing", items = s.items.map { if (it.id == answerId) it.copy(text = it.text + event.text) else it })
             }
             is AgentEvent.ThoughtDelta -> _state.update { s ->
                 val last = s.terminal.lastOrNull()
@@ -247,6 +252,7 @@ class AgentSessionController(private val container: AppContainer) {
                         (if (narration.isNotEmpty()) listOf(TerminalLine(newId(), TerminalKind.THOUGHT, narration)) else emptyList()) +
                         TerminalLine(newId(), TerminalKind.ACTION, "→ ${event.name} ${event.argumentsJson}")
                     s.copy(
+                        activity = activityFor(event.name, event.argumentsJson),
                         items = s.items.map { if (it.id == answerId) it.copy(text = "") else it },
                         terminal = terminal.takeLast(MAX_TERMINAL_LINES)
                     )
@@ -264,6 +270,7 @@ class AgentSessionController(private val container: AppContainer) {
                     val idx = s.items.indexOfFirst { it.id == answerId }
                     val items = if (idx >= 0) s.items.toMutableList().apply { add(idx, toolItem) } else s.items + toolItem
                     s.copy(
+                        activity = "thinking",
                         items = items,
                         terminal = (s.terminal + TerminalLine(
                             newId(),
@@ -290,6 +297,12 @@ class AgentSessionController(private val container: AppContainer) {
                 }
             }
         }
+    }
+
+    private fun activityFor(tool: String, argumentsJson: String): String {
+        if (tool != "phone") return tool
+        val action = Regex("\"action\"\\s*:\\s*\"([a-z_]+)\"").find(argumentsJson)?.groupValues?.get(1) ?: "phone"
+        return "phone:$action"
     }
 
     private fun currentText(id: Long) = _state.value.items.firstOrNull { it.id == id }?.text.orEmpty()

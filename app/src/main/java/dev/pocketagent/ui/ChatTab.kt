@@ -154,14 +154,26 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                         }
                     },
                     avatar = {
-                        AssistantAvatar(
+                        ActivityAvatar(
                             settings.avatarKind, settings.avatarValue, settings.assistantName,
-                            viewModel.avatarPhoto(settings), 96.dp, photoVersion = avatarVersion
+                            viewModel.avatarPhoto(settings), 96.dp, activity = chat.activity, photoVersion = avatarVersion
                         )
                     }
                 )
             } else {
-                MessageList(chat.items, accent, Modifier.weight(1f))
+                MessageList(chat.items, accent, Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ActivityAvatar(
+                            settings.avatarKind, settings.avatarValue, settings.assistantName,
+                            viewModel.avatarPhoto(settings), 30.dp, activity = chat.activity ?: "thinking", photoVersion = avatarVersion
+                        )
+                        Text(
+                            (activityCaption(chat.activity) ?: "thinking") + "…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Palette.TextMuted
+                        )
+                    }
+                }
             }
             pending?.let { file -> PendingAttachment(file, onRemove = viewModel::clearPendingImage) }
             Composer(
@@ -253,7 +265,7 @@ private fun EmptyChat(
 }
 
 @Composable
-private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier) {
+private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier, working: @Composable () -> Unit) {
     val listState = rememberLazyListState()
     val lastLength = items.lastOrNull()?.text?.length ?: 0
     LaunchedEffect(items.size, lastLength) {
@@ -271,8 +283,8 @@ private fun MessageList(items: List<ChatItem>, accent: Color, modifier: Modifier
                     item.imagePath?.let { path -> ChatImage(File(path)) }
                     Bubble(item.text, Palette.SurfaceHigh, Alignment.CenterEnd, Palette.Text)
                 }
-                ItemRole.ASSISTANT -> Bubble(
-                    text = if (item.streaming && item.text.isEmpty()) "▍" else item.text + if (item.streaming) "▍" else "",
+                ItemRole.ASSISTANT -> if (item.streaming && item.text.isEmpty()) working() else Bubble(
+                    text = item.text + if (item.streaming) "▍" else "",
                     background = Color.Transparent,
                     alignment = Alignment.CenterStart,
                     color = if (item.isError) Palette.Error else Palette.Text,

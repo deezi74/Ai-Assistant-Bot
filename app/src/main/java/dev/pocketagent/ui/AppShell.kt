@@ -194,7 +194,7 @@ private fun Header(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(68.dp)
             .padding(horizontal = 4.dp)
     ) {
         IconButton(onClick = onMenu, modifier = Modifier.align(Alignment.CenterStart)) { Icon(Icons.Filled.Menu, "Open menu") }
@@ -207,17 +207,16 @@ private fun Header(
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AssistantAvatar(
+            ActivityAvatar(
                 settings.avatarKind, settings.avatarValue, settings.assistantName,
-                viewModel.avatarPhoto(settings), 36.dp, photoVersion = avatarVersion,
-                ring = if (chat.running) Palette.Accent else null
+                viewModel.avatarPhoto(settings), 34.dp, activity = chat.activity, photoVersion = avatarVersion
             )
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(settings.assistantName, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                 val sub = when {
                     tab != Tab.CHAT -> tab.label
-                    chat.running -> "thinking · step ${chat.step}"
+                    chat.running -> (activityCaption(chat.activity) ?: "thinking") + "…"
                     chat.isMain -> settings.mode.label
                     else -> chat.title
                 }
