@@ -56,6 +56,8 @@ data class AppSettings(
     val shareLocation: Boolean = false,
     /** Lets the email tool move messages to Trash or archive them. */
     val emailCanOrganize: Boolean = true,
+    /** Lets the GitHub tool open issues and post comments (reading is always allowed). */
+    val githubCanWrite: Boolean = false,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -149,6 +151,7 @@ class SecureSettings(context: Context) : CredentialStore {
             quickReplies = prefs.getBoolean("quick_replies", d.quickReplies),
             shareLocation = prefs.getBoolean("share_location", d.shareLocation),
             emailCanOrganize = prefs.getBoolean("email_can_organize", d.emailCanOrganize),
+            githubCanWrite = prefs.getBoolean("github_can_write", d.githubCanWrite),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -194,6 +197,7 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("quick_replies", next.quickReplies)
             .putBoolean("share_location", next.shareLocation)
             .putBoolean("email_can_organize", next.emailCanOrganize)
+            .putBoolean("github_can_write", next.githubCanWrite)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
@@ -234,19 +238,39 @@ class SecureSettings(context: Context) : CredentialStore {
         get() = secret("token_google_places")
         set(value) = putSecret("token_google_places", value)
 
-    /** IMAP account for the email tool: host, port, address and app password. */
-    var emailAccount: EmailAccount?
+    /** GitHub personal access token for the github tool. */
+    var githubToken: String?
+        get() = secret("token_github")
+        set(value) = putSecret("token_github", value)
+
+    /** IMAP accounts for the email tool, stored as one encrypted JSON value. */
+    var emailAccounts: List<EmailAccount>
         get() {
-            val host = secret("token_email_host") ?: return null
-            val user = secret("token_email_user") ?: return null
-            val pass = secret("token_email_password") ?: return null
-            return EmailAccount(host, secret("token_email_port")?.toIntOrNull() ?: 993, user, pass)
+            val raw = secret("token_email_accounts")
+            if (raw == null) {
+                // 1.5.x stored a single account in separate keys.
+                val host = secret("token_email_host") ?: return emptyList()
+                val user = secret("token_email_user") ?: return emptyList()
+                val pass = secret("token_email_password") ?: return emptyList()
+                return listOf(EmailAccount(host, secret("token_email_port")?.toIntOrNull() ?: 993, user, pass))
+            }
+            return try {
+                val arr = org.json.JSONArray(raw)
+                (0 until arr.length()).map { i ->
+                    val o = arr.getJSONObject(i)
+                    EmailAccount(o.getString("host"), o.optInt("port", 993), o.getString("user"), o.getString("password"))
+                }
+            } catch (e: org.json.JSONException) {
+                emptyList()
+            }
         }
         set(value) {
-            putSecret("token_email_host", value?.host)
-            putSecret("token_email_port", value?.port?.toString())
-            putSecret("token_email_user", value?.user)
-            putSecret("token_email_password", value?.password)
+            val arr = org.json.JSONArray()
+            value.forEach { a ->
+                arr.put(org.json.JSONObject().put("host", a.host).put("port", a.port).put("user", a.user).put("password", a.password))
+            }
+            putSecret("token_email_accounts", if (value.isEmpty()) null else arr.toString())
+            listOf("token_email_host", "token_email_port", "token_email_user", "token_email_password").forEach { putSecret(it, null) }
         }
 
     private fun secret(key: String): String? = prefs.getString(key, null)?.takeIf { it.isNotBlank() }

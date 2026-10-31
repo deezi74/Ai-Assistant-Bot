@@ -12,6 +12,8 @@ import dev.pocketagent.agent.ComputerSession
 import dev.pocketagent.agent.DeviceLocation
 import dev.pocketagent.agent.EmailClient
 import dev.pocketagent.agent.EmailTool
+import dev.pocketagent.core.tools.GitHubClient
+import dev.pocketagent.core.tools.GitHubTool
 import dev.pocketagent.agent.LearnSkillTool
 import dev.pocketagent.agent.Learner
 import dev.pocketagent.agent.PhoneTool
@@ -122,6 +124,7 @@ class AppContainer(val app: PocketAgentApp) {
     val location = DeviceLocation(app) { settings.current.shareLocation }
     val places = PlacesClient(googleKey = { settings.googlePlacesKey })
     val email = EmailClient(settings)
+    val github = GitHubClient(token = { settings.githubToken })
     private val imperial: () -> Boolean = { DeviceLocation.prefersImperial() }
 
     val tools = ToolRegistry(
@@ -138,6 +141,7 @@ class AppContainer(val app: PocketAgentApp) {
             OnlineOnlyTool(PlacesTool(places, location::current, imperial), offline),
             OnlineOnlyTool(WeatherTool(places, location::current, imperial), offline),
             OnlineOnlyTool(EmailTool(email) { settings.current.emailCanOrganize }, offline),
+            OnlineOnlyTool(GitHubTool(github) { settings.current.githubCanWrite }, offline),
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },

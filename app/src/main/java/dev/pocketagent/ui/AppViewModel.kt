@@ -462,37 +462,42 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // region Connectors: email, location, places, image keys
 
     val emailPresets: List<EmailPreset> = EmailClient.presets
-    private val _emailAccount = MutableStateFlow(container.settings.emailAccount?.let { it.copy(password = "") })
-    /** The connected account with the password blanked out. */
-    val emailAccount: StateFlow<EmailAccount?> = _emailAccount.asStateFlow()
+    private fun publicAccounts() = container.settings.emailAccounts.map { it.copy(password = "") }
+    private val _emailAccounts = MutableStateFlow(publicAccounts())
+    /** Connected accounts with their passwords blanked out. */
+    val emailAccounts: StateFlow<List<EmailAccount>> = _emailAccounts.asStateFlow()
     private val _emailStatus = MutableStateFlow<String?>(null)
     val emailStatus: StateFlow<String?> = _emailStatus.asStateFlow()
 
+    /** Adds an account, or replaces the one with the same address, then tests it. */
     fun connectEmail(host: String, port: Int, user: String, password: String) {
-        val existing = container.settings.emailAccount
+        val address = user.trim()
+        val all = container.settings.emailAccounts
+        val existing = all.firstOrNull { it.user.equals(address, ignoreCase = true) }
         val pass = password.replace(" ", "").ifBlank { existing?.password.orEmpty() }
-        if (host.isBlank() || user.isBlank() || pass.isBlank()) {
+        if (host.isBlank() || address.isBlank() || pass.isBlank()) {
             _emailStatus.value = "Fill in the server, address and app password."
             return
         }
-        container.settings.emailAccount = EmailAccount(host.trim(), port, user.trim(), pass)
-        _emailAccount.value = EmailAccount(host.trim(), port, user.trim(), "")
-        _emailStatus.value = "Testing…"
+        val account = EmailAccount(host.trim(), port, address, pass)
+        container.settings.emailAccounts = all.filterNot { it.user.equals(address, ignoreCase = true) } + account
+        _emailAccounts.value = publicAccounts()
+        _emailStatus.value = "Testing $address…"
         viewModelScope.launch {
             _emailStatus.value = try {
-                container.email.test()
+                container.email.test(account)
             } catch (e: javax.mail.AuthenticationFailedException) {
-                "Sign-in failed. Use an app password, not your normal password."
+                "Sign-in failed for $address. Use an app password, not your normal password."
             } catch (e: Exception) {
-                "Could not connect: ${e.message}"
+                "Could not connect $address: ${e.message}"
             }
         }
     }
 
-    fun disconnectEmail() {
-        container.settings.emailAccount = null
-        _emailAccount.value = null
-        _emailStatus.value = "Disconnected. The app password was removed from this phone."
+    fun disconnectEmail(user: String) {
+        container.settings.emailAccounts = container.settings.emailAccounts.filterNot { it.user.equals(user, ignoreCase = true) }
+        _emailAccounts.value = publicAccounts()
+        _emailStatus.value = "Removed $user and its app password from this phone."
     }
 
     fun hasLocationPermission(): Boolean = container.location.hasPermission()
@@ -511,6 +516,29 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun savePlacesKey(key: String?) {
         container.settings.googlePlacesKey = key
         toast(if (key.isNullOrBlank()) "Google Places key removed, using OpenStreetMap" else "Google Places key saved")
+    }
+
+    private val _github = MutableStateFlow<String?>(null)
+    /** "Connected as …" or an error, after saving or testing the GitHub token. */
+    val githubStatus: StateFlow<String?> = _github.asStateFlow()
+    val hasGithubToken: Boolean get() = container.github.hasToken()
+
+    fun saveGithubToken(token: String?) {
+        container.settings.githubToken = token?.trim()
+        if (token.isNullOrBlank()) {
+            _github.value = "GitHub disconnected and the token removed from this phone."
+        } else {
+            testGithub()
+        }
+    }
+
+    fun testGithub() = viewModelScope.launch {
+        _github.value = "Checking the token…"
+        _github.value = try {
+            "Connected as ${container.github.whoAmI()}."
+        } catch (e: Exception) {
+            e.message ?: "GitHub check failed"
+        }
     }
 
     val hasPollinationsToken: Boolean get() = !container.settings.pollinationsToken.isNullOrBlank()

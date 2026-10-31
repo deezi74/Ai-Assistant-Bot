@@ -49,10 +49,16 @@ data class EmailPreset(val id: String, val label: String, val host: String, val 
  */
 class EmailClient(private val settings: SecureSettings) {
 
-    val account: EmailAccount? get() = settings.emailAccount
+    val accounts: List<EmailAccount> get() = settings.emailAccounts
 
-    fun <T> withFolder(name: String = "INBOX", write: Boolean = false, block: (Store, IMAPFolder) -> T): T {
-        val acc = account ?: throw IllegalStateException("No email account connected. Set it up in Settings ▸ Connectors ▸ Email.")
+    /** The account whose address contains [hint], or the only one; null when it is ambiguous. */
+    fun pick(hint: String?): EmailAccount? {
+        val all = accounts
+        if (hint.isNullOrBlank()) return all.singleOrNull()
+        return all.firstOrNull { it.user.equals(hint, ignoreCase = true) } ?: all.firstOrNull { it.user.contains(hint, ignoreCase = true) }
+    }
+
+    fun <T> withFolder(acc: EmailAccount, name: String = "INBOX", write: Boolean = false, block: (Store, IMAPFolder) -> T): T {
         val props = Properties().apply {
             put("mail.store.protocol", "imaps")
             put("mail.imaps.host", acc.host)
@@ -80,8 +86,8 @@ class EmailClient(private val settings: SecureSettings) {
     }
 
     /** Signs in and counts unread mail; used by the Test button. */
-    suspend fun test(): String = withContext(Dispatchers.IO) {
-        withFolder { _, inbox -> "Connected. ${inbox.unreadMessageCount} unread of ${inbox.messageCount} in the inbox." }
+    suspend fun test(acc: EmailAccount): String = withContext(Dispatchers.IO) {
+        withFolder(acc) { _, inbox -> "Connected ${acc.user}. ${inbox.unreadMessageCount} unread of ${inbox.messageCount} in the inbox." }
     }
 
     /** Finds a folder by IMAP special-use flag (\Trash, \All, \Archive) or by common names. */
@@ -106,27 +112,49 @@ class EmailClient(private val settings: SecureSettings) {
 class EmailTool(private val client: EmailClient, private val canOrganize: () -> Boolean) : Tool {
     override val name = "email"
     override val description =
-        "Read and organize the user's email inbox. Actions: inbox (latest messages), search (from/subject/text/days), read (one message by id), " +
+        "Read and organize the user's email (one or more accounts; pass \"account\" with the address when there are several). Actions: inbox (latest messages), search (from/subject/text/days), read (one message by id), " +
             "mark_read, archive, trash (moves to Trash, recoverable), folders. Summarize; quote only what is needed. " +
             "Before trash or archive of more than 5 messages, list them and get the user's OK."
     override val argumentsSignature =
-        """{"action": "inbox"|"search"|"read"|"mark_read"|"archive"|"trash"|"folders", "ids"?: [int], "from"?: string, "subject"?: string, "text"?: string, "days"?: int, "unread_only"?: bool, "limit"?: int, "folder"?: string}"""
+        """{"action": "inbox"|"search"|"read"|"mark_read"|"archive"|"trash"|"folders", "ids"?: [int], "from"?: string, "subject"?: string, "text"?: string, "days"?: int, "unread_only"?: bool, "limit"?: int, "folder"?: string, "account"?: string (address; inbox and search default to all accounts)}"""
     override val modes = setOf(AgentMode.WIT, AgentMode.RESEARCH)
-    override fun isAvailable(): Boolean = client.account != null
+    override fun isAvailable(): Boolean = client.accounts.isNotEmpty()
 
     override suspend fun execute(arguments: JsonObject): ToolResult = withContext(Dispatchers.IO) {
         val action = arguments.string("action")?.lowercase(Locale.US) ?: "inbox"
         val folderName = arguments.string("folder") ?: "INBOX"
+        val hint = arguments.string("account")
         try {
             when (action) {
-                "inbox", "list", "latest", "unread" -> list(folderName, arguments.int("limit") ?: 15, action == "unread" || arguments.bool("unread_only") == true, null)
-                "search", "find" -> list(folderName, arguments.int("limit") ?: 20, arguments.bool("unread_only") == true, searchTerm(arguments) ?: return@withContext ToolResult.error("give from, subject, text or days"))
-                "read", "open" -> read(folderName, ids(arguments).firstOrNull() ?: return@withContext ToolResult.error("missing \"ids\""))
-                "mark_read", "read_all" -> flag(folderName, ids(arguments))
-                "archive" -> move(folderName, ids(arguments), archive = true)
-                "trash", "delete" -> move(folderName, ids(arguments), archive = false)
-                "folders" -> folders()
-                else -> ToolResult.error("unknown action \"$action\"")
+                "inbox", "list", "latest", "unread", "search", "find" -> {
+                    val search = action == "search" || action == "find"
+                    val term = if (search) searchTerm(arguments) ?: return@withContext ToolResult.error("give from, subject, text or days") else null
+                    val unread = action == "unread" || arguments.bool("unread_only") == true
+                    val limit = arguments.int("limit") ?: if (search) 20 else 15
+                    val targets = if (hint != null) listOfNotNull(client.pick(hint)) else client.accounts
+                    if (targets.isEmpty()) return@withContext ToolResult.error("no connected account matches \"$hint\". Accounts: ${client.accounts.joinToString { it.user }}")
+                    val parts = targets.map { acc ->
+                        try {
+                            list(acc, folderName, limit, unread, term, tagged = targets.size > 1)
+                        } catch (e: javax.mail.AuthenticationFailedException) {
+                            "${acc.user}: sign-in failed, check its app password in Settings ▸ Connectors ▸ Email."
+                        } catch (e: Exception) {
+                            "${acc.user}: ${e.message ?: e.javaClass.simpleName}"
+                        }
+                    }
+                    ToolResult(UNTRUSTED + "\n" + parts.joinToString("\n\n"))
+                }
+                "folders" -> folders(account(hint) ?: return@withContext ambiguous(hint))
+                else -> {
+                    val acc = account(hint) ?: return@withContext ambiguous(hint)
+                    when (action) {
+                        "read", "open" -> read(acc, folderName, ids(arguments).firstOrNull() ?: return@withContext ToolResult.error("missing \"ids\""))
+                        "mark_read", "read_all" -> flag(acc, folderName, ids(arguments))
+                        "archive" -> move(acc, folderName, ids(arguments), archive = true)
+                        "trash", "delete" -> move(acc, folderName, ids(arguments), archive = false)
+                        else -> ToolResult.error("unknown action \"$action\"")
+                    }
+                }
             }
         } catch (e: javax.mail.AuthenticationFailedException) {
             ToolResult.error("email sign-in failed. Check the address and app password in Settings ▸ Connectors ▸ Email.")
@@ -135,7 +163,14 @@ class EmailTool(private val client: EmailClient, private val canOrganize: () -> 
         }
     }
 
-    private fun list(folderName: String, limit: Int, unreadOnly: Boolean, term: SearchTerm?): ToolResult = client.withFolder(folderName) { _, folder ->
+    private fun account(hint: String?): EmailAccount? = client.pick(hint)
+
+    private fun ambiguous(hint: String?): ToolResult = ToolResult.error(
+        if (hint == null) "several accounts are connected; pass \"account\" (${client.accounts.joinToString { it.user }})"
+        else "no connected account matches \"$hint\" (${client.accounts.joinToString { it.user }})"
+    )
+
+    private fun list(acc: EmailAccount, folderName: String, limit: Int, unreadOnly: Boolean, term: SearchTerm?, tagged: Boolean): String = client.withFolder(acc, folderName) { _, folder ->
         val total = folder.messageCount
         val combined = listOfNotNull(term, if (unreadOnly) FlagTerm(Flags(Flags.Flag.SEEN), false) else null)
         val messages: Array<Message> = when {
@@ -151,13 +186,11 @@ class EmailTool(private val client: EmailClient, private val canOrganize: () -> 
             val unread = !m.isSet(Flags.Flag.SEEN)
             "id ${folder.getUID(m)} ${if (unread) "• unread" else ""} | ${m.receivedDate?.let { fmt.format(it) } ?: ""} | $from | ${m.subject?.take(140) ?: "(no subject)"}"
         }
-        ToolResult(
-            UNTRUSTED + "\n" + (if (term == null) "$folderName: ${folder.unreadMessageCount} unread of $total. Latest ${lines.size}:\n" else "${messages.size} match(es), newest ${lines.size}:\n") +
-                lines.joinToString("\n").ifEmpty { "(none)" }
-        )
+        val header = if (term == null) "$folderName: ${folder.unreadMessageCount} unread of $total. Latest ${lines.size}:" else "${messages.size} match(es), newest ${lines.size}:"
+        (if (tagged) "## ${acc.user}\n" else "") + header + "\n" + lines.joinToString("\n").ifEmpty { "(none)" }
     }
 
-    private fun read(folderName: String, uid: Long): ToolResult = client.withFolder(folderName, write = true) { _, folder ->
+    private fun read(acc: EmailAccount, folderName: String, uid: Long): ToolResult = client.withFolder(acc, folderName, write = true) { _, folder ->
         val m = folder.getMessageByUID(uid) ?: return@withFolder ToolResult.error("no message with id $uid")
         val body = textOf(m).replace(Regex("\n{3,}"), "\n\n").trim()
         m.setFlag(Flags.Flag.SEEN, true)
@@ -169,20 +202,20 @@ class EmailTool(private val client: EmailClient, private val canOrganize: () -> 
         )
     }
 
-    private fun flag(folderName: String, uids: List<Long>): ToolResult {
+    private fun flag(acc: EmailAccount, folderName: String, uids: List<Long>): ToolResult {
         if (uids.isEmpty()) return ToolResult.error("missing \"ids\"")
-        return client.withFolder(folderName, write = true) { _, folder ->
+        return client.withFolder(acc, folderName, write = true) { _, folder ->
             val msgs = folder.getMessagesByUID(uids.toLongArray()).filterNotNull().toTypedArray()
             folder.setFlags(msgs, Flags(Flags.Flag.SEEN), true)
             ToolResult("Marked ${msgs.size} message(s) as read.")
         }
     }
 
-    private fun move(folderName: String, uids: List<Long>, archive: Boolean): ToolResult {
+    private fun move(acc: EmailAccount, folderName: String, uids: List<Long>, archive: Boolean): ToolResult {
         if (!canOrganize()) return ToolResult.error("organizing email is turned off. The user can allow it in Settings ▸ Connectors ▸ Email.")
         if (uids.isEmpty()) return ToolResult.error("missing \"ids\"")
         if (uids.size > MAX_MOVE) return ToolResult.error("at most $MAX_MOVE messages per call")
-        return client.withFolder(folderName, write = true) { store, folder ->
+        return client.withFolder(acc, folderName, write = true) { store, folder ->
             val target = if (archive) {
                 client.specialFolder(store, "\\All", "[Gmail]/All Mail") ?: client.specialFolder(store, "\\Archive", "Archive", "Archives")
             } else {
@@ -201,7 +234,7 @@ class EmailTool(private val client: EmailClient, private val canOrganize: () -> 
         }
     }
 
-    private fun folders(): ToolResult = client.withFolder { store, _ ->
+    private fun folders(acc: EmailAccount): ToolResult = client.withFolder(acc) { store, _ ->
         ToolResult(store.defaultFolder.list("*").joinToString("\n") { it.fullName })
     }
 

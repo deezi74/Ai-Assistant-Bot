@@ -76,6 +76,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "growth" -> GrowthScreen(viewModel, back)
             "email" -> EmailConnectorScreen(viewModel, back)
             "location" -> LocationConnectorScreen(viewModel, back)
+            "github" -> GitHubConnectorScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)

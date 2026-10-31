@@ -136,7 +136,7 @@ fun TokenUsageScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 @Composable
 fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val emailAccount by viewModel.emailAccount.collectAsStateWithLifecycle()
+    val emailAccounts by viewModel.emailAccounts.collectAsStateWithLifecycle()
     val mounts by viewModel.mounts.collectAsStateWithLifecycle()
     SubScreen("Connectors", onBack) {
         Hint("Services the assistant can reach. Everything is off-device only when you use it.")
@@ -160,14 +160,24 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             connected = mounts.isNotEmpty(), action = "Mount"
         ) { viewModel.push("mounts") }
         ConnectorCard(
-            "Email", emailAccount?.let { "${it.user} · ${if (settings.emailCanOrganize) "read and organize" else "read only"}" } ?: "Not connected",
-            connected = emailAccount != null, action = if (emailAccount != null) "Manage" else "Connect"
+            "Email",
+            when (emailAccounts.size) {
+                0 -> "Not connected"
+                1 -> "${emailAccounts[0].user} · ${if (settings.emailCanOrganize) "read and organize" else "read only"}"
+                else -> "${emailAccounts.size} accounts · ${if (settings.emailCanOrganize) "read and organize" else "read only"}"
+            },
+            connected = emailAccounts.isNotEmpty(), action = if (emailAccounts.isNotEmpty()) "Manage" else "Connect"
         ) { viewModel.push("email") }
         ConnectorCard(
             "Location & places",
             if (settings.shareLocation) "On · nearby places, distances, opening hours, weather" else "Off",
             connected = settings.shareLocation, action = "Set up"
         ) { viewModel.push("location") }
+        ConnectorCard(
+            "GitHub",
+            if (viewModel.hasGithubToken) (if (settings.githubCanWrite) "Connected · read, open issues and comment" else "Connected · read only") else "Not connected",
+            connected = viewModel.hasGithubToken, action = if (viewModel.hasGithubToken) "Manage" else "Connect"
+        ) { viewModel.push("github") }
         Hint("Calendar and contacts are not connected in this build.")
     }
 }
@@ -176,21 +186,34 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 @Composable
 fun EmailConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val account by viewModel.emailAccount.collectAsStateWithLifecycle()
+    val accounts by viewModel.emailAccounts.collectAsStateWithLifecycle()
     val status by viewModel.emailStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val initialPreset = viewModel.emailPresets.firstOrNull { it.host == account?.host } ?: viewModel.emailPresets.first()
-    var presetId by remember { mutableStateOf(account?.let { if (initialPreset.host == it.host) initialPreset.id else "other" } ?: initialPreset.id) }
+    var presetId by remember { mutableStateOf(viewModel.emailPresets.first().id) }
     val preset = viewModel.emailPresets.first { it.id == presetId }
-    var host by remember { mutableStateOf(account?.host ?: preset.host) }
-    var port by remember { mutableStateOf((account?.port ?: 993).toString()) }
-    var user by remember { mutableStateOf(account?.user ?: "") }
+    var host by remember { mutableStateOf(preset.host) }
+    var port by remember { mutableStateOf("993") }
+    var user by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var confirmDisconnect by remember { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<String?>(null) }
 
     SubScreen("Email", onBack) {
-        Hint("${settings.assistantName} reads your inbox over IMAP to summarize it, find messages, and keep it tidy. Ask things like \"what's new in my email?\" or \"archive the newsletters from this week\". You can also make a Routine for a morning email update.")
-        SectionTitle("Provider")
+        Hint("${settings.assistantName} reads your inboxes over IMAP to summarize them, find messages, and keep them tidy. Ask things like \"what's new in my email?\" or \"archive the newsletters in my work inbox\". With several accounts it checks all of them unless you name one.")
+        SectionTitle("Connected (${accounts.size})")
+        if (accounts.isEmpty()) Hint("No accounts yet.")
+        accounts.forEach { acc ->
+            SurfaceCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(acc.user, style = MaterialTheme.typography.titleMedium)
+                        Hint(acc.host)
+                    }
+                    IconButton(onClick = { removing = acc.user }) { Icon(Icons.Filled.DeleteOutline, "Remove", tint = Palette.TextMuted) }
+                }
+            }
+        }
+
+        SectionTitle(if (accounts.isEmpty()) "Add an account" else "Add another account")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             viewModel.emailPresets.forEach { p ->
                 val selected = presetId == p.id
@@ -203,7 +226,7 @@ fun EmailConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
                         .background(if (selected) Palette.Accent else Palette.SurfaceHigh)
                         .clickable {
                             presetId = p.id
-                            if (p.host.isNotEmpty()) host = p.host
+                            host = p.host
                             port = p.port.toString()
                         }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
@@ -215,19 +238,21 @@ fun EmailConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             OutlinedButton(onClick = { openUrl(context, "https://myaccount.google.com/apppasswords") }) { Text("Create a Gmail app password") }
         }
         AppTextField(user, { user = it.trim() }, "Email address")
-        SecretField(password, { password = it }, if (account != null) "App password (saved; enter to replace)" else "App password")
+        SecretField(password, { password = it }, "App password")
         if (preset.id == "other") {
             AppTextField(host, { host = it.trim() }, "IMAP server, e.g. imap.example.com")
             AppTextField(port, { port = it.filter(Char::isDigit).take(5) }, "Port (usually 993)")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                onClick = { viewModel.connectEmail(host, port.toIntOrNull() ?: 993, user, password); password = "" },
-                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
-            ) { Text(if (account != null) "Save & test" else "Connect") }
-            if (account != null) OutlinedButton(onClick = { confirmDisconnect = true }) { Text("Disconnect") }
-        }
+        Button(
+            onClick = {
+                viewModel.connectEmail(host, port.toIntOrNull() ?: 993, user, password)
+                password = ""
+                user = ""
+            },
+            colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+        ) { Text("Connect & test") }
         status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+        Hint("To replace an app password, add the same address again.")
 
         SectionTitle("Permissions")
         SwitchRow(
@@ -235,10 +260,10 @@ fun EmailConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             "Archive, mark as read and move to Trash when you ask. Mail in Trash can be restored for about 30 days. Nothing is ever deleted permanently.",
             settings.emailCanOrganize
         ) { c -> viewModel.updateSettings { it.copy(emailCanOrganize = c) } }
-        Hint("Your app password is stored encrypted on this phone and is never included in backups. Email text is treated as untrusted: instructions hidden inside an email are ignored. It never sends email.")
+        Hint("App passwords are stored encrypted on this phone and never included in backups. Email text is treated as untrusted: instructions hidden inside an email are ignored. It never sends email.")
     }
-    if (confirmDisconnect) {
-        ConfirmDialog("Disconnect email?", "The app password is removed from this phone.", "Disconnect", { viewModel.disconnectEmail() }, { confirmDisconnect = false })
+    removing?.let { address ->
+        ConfirmDialog("Remove $address?", "Its app password is deleted from this phone.", "Remove", { viewModel.disconnectEmail(address) }, { removing = null })
     }
 }
 
@@ -300,6 +325,57 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ).forEach { example ->
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
         }
+    }
+}
+
+@Composable
+fun GitHubConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val status by viewModel.githubStatus.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var token by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf(false) }
+    val connected = remember(status) { viewModel.hasGithubToken }
+
+    SubScreen("GitHub", onBack) {
+        Hint("${settings.assistantName} can check your repos, issues, pull requests and notifications, read files and search code. Ask things like \"what's new on GitHub?\" or \"summarize the open issues in owner/repo\".")
+        SectionTitle(if (connected) "Connected" else "Connect")
+        Hint("Create a fine-grained personal access token. For reading, give it Contents, Issues, Pull requests and Metadata read access on the repos you want. Add Issues write access only if you turn on writing below. Notifications need a classic token with the notifications scope.")
+        OutlinedButton(onClick = { openUrl(context, "https://github.com/settings/personal-access-tokens/new") }) { Text("Create a token on GitHub") }
+        SecretField(token, { token = it.trim() }, if (connected) "Personal access token (saved)" else "Personal access token")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { viewModel.saveGithubToken(token); token = "" },
+                enabled = token.isNotBlank(),
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+            ) { Text("Save & test") }
+            if (connected) {
+                OutlinedButton(onClick = { viewModel.testGithub() }) { Text("Test") }
+                OutlinedButton(onClick = { removing = true }) { Text("Disconnect") }
+            }
+        }
+        status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+
+        SectionTitle("Permissions")
+        SwitchRow(
+            "Let it open issues and comment",
+            "Only when you ask. It never pushes code, merges, closes or deletes anything.",
+            settings.githubCanWrite
+        ) { c -> viewModel.updateSettings { it.copy(githubCanWrite = c) } }
+        Hint("The token is stored encrypted on this phone and never included in backups. Issue and PR text is treated as untrusted: instructions hidden inside it are ignored.")
+
+        SectionTitle("Try saying")
+        listOf(
+            "What's new on GitHub?",
+            "List my repos",
+            "Show the open pull requests in owner/repo",
+            "Read the README in owner/repo"
+        ).forEach { example ->
+            SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
+        }
+    }
+    if (removing) {
+        ConfirmDialog("Disconnect GitHub?", "The token is deleted from this phone. You can also revoke it on GitHub.", "Disconnect", { viewModel.saveGithubToken(null) }, { removing = false })
     }
 }
 
