@@ -51,3 +51,19 @@ class CompactManifestTest {
         assertEquals("No period here", ToolRegistry.firstSentence("No period here"))
     }
 }
+
+class ClockNoteTest {
+    private val persona = dev.pocketagent.core.agent.PersonaManager(
+        kotlin.io.path.createTempDirectory().toFile(),
+        clock = { java.time.ZonedDateTime.of(2026, 10, 31, 18, 50, 0, 0, java.time.ZoneId.of("America/Chicago")) }
+    )
+
+    @Test
+    fun timeQuestionsGetTheRealClock() {
+        val note = persona.clockNote("what time is it")
+        assertTrue(note, note.contains("6:50 PM CDT"))
+        assertTrue(note, note.contains("America/Chicago"))
+        assertTrue(persona.clockNote("tell me the real time right now").isNotEmpty())
+        assertEquals("", persona.clockNote("tell me a joke about cats"))
+    }
+}

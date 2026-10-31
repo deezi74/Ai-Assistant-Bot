@@ -35,6 +35,9 @@ class DeviceLocation(private val context: Context, private val enabled: () -> Bo
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    /** The last known area (address label), without waiting for a new fix. */
+    fun lastLabel(): String? = cache?.second?.label?.takeIf { it.isNotBlank() && enabled() }
+
     fun isLocationOn(): Boolean = manager?.isLocationEnabled == true
 
     suspend fun current(): GeoPoint? {

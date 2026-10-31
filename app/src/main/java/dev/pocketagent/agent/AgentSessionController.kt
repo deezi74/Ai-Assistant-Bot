@@ -265,7 +265,9 @@ class AgentSessionController(private val container: AppContainer) {
      */
     private suspend fun ensureRemembered(prompt: String, conversationId: Long) {
         if (synchronized(turnTools) { "remember" in turnTools }) return
-        val fact = rememberRequest(prompt) ?: return
+        // "Remember that" points back at the previous message, so save that message instead.
+        val previous = dao.messages(conversationId).filter { it.role == "user" }.dropLast(1).lastOrNull()?.content
+        val fact = rememberRequest(prompt, previous) ?: return
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { container.workspace.appendMemory(fact) }
         val note = "Saved to memory: $fact"
         dao.insertMessage(MessageEntity(conversationId = conversationId, role = "tool", content = note, toolName = "remember", createdAt = now()))
@@ -521,12 +523,24 @@ class AgentSessionController(private val container: AppContainer) {
         )
 
         /** The fact in "remember that …" style messages, or null. */
-        fun rememberRequest(prompt: String): String? {
+        fun rememberRequest(prompt: String, previous: String? = null): String? {
             if (prompt.trim().endsWith("?")) return null // "remember when…?" is a question, not a request
-            val fact = REMEMBER.find(prompt.trim())?.groupValues?.get(1)?.trim()?.trimEnd('.', '!', '?')?.trim() ?: return null
+            var fact = REMEMBER.find(prompt.trim())?.groupValues?.get(1)?.trim()?.trimEnd('.', '!', '?')?.trim() ?: return null
+            if (fact.length < 3 || VAGUE.containsMatchIn(fact)) {
+                // "remember that (for next time)": the fact is what the user said just before.
+                fact = previous?.trim()?.takeIf { !it.endsWith("?") }
+                    ?.replace(Regex("^(no|nope|yes|yeah|actually|well)[,!.]?\\s+", RegexOption.IGNORE_CASE), "")
+                    ?.trimEnd('.', '!')?.trim() ?: return null
+            }
             if (fact.length < 3 || fact.length > 600) return null
             return fact.replace(Regex("\\s+"), " ").replaceFirstChar { it.uppercase() }
         }
+
+        /** Remember-requests that carry no fact of their own ("for next time", "it", "this"). */
+        private val VAGUE = Regex(
+            "^(?:it|this|that|for (?:the )?next time.*|next time.*|for later|for me|for (?:the )?future.*|when i ask.*|okay|ok|please)$",
+            RegexOption.IGNORE_CASE
+        )
 
 
         const val TASK_STEPS = 30

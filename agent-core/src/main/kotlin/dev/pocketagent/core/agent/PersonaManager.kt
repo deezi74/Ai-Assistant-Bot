@@ -69,14 +69,33 @@ class PersonaManager(
         if (extraContext.isNotBlank()) append('\n').append(extraContext.trim()).append('\n')
         append("\n## Context\n")
         append("- Today: ").append(clock().format(DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd zzz"))).append('\n')
-        append("- Don't mention the date or time unless the user asks for it or the task needs it. For the exact time, use the current_time tool.\n")
+        append("- Time zone: ").append(clock().zone.id).append('\n')
+        append("- Don't mention the date or time unless the user asks for it or the task needs it. Never guess the time: use the [Clock] note on the user's message or the current_time tool.\n")
         if (deviceDescription.isNotBlank()) append("- Device: ").append(deviceDescription).append('\n')
         if (toolDetails.isNotBlank()) append("\n## Tool details for this request\n").append(toolDetails.trim()).append('\n')
     }
 
 
+    /**
+     * When the user asks about the time or date, the real clock is attached to that
+     * message only, so the model never guesses (or repeats a time said earlier) and
+     * doesn't read the time out on every other turn.
+     */
+    fun clockNote(userMessage: String): String {
+        if (!ASKS_TIME.containsMatchIn(userMessage)) return ""
+        val now = clock()
+        return "\n\n[Clock, from the phone: " +
+            now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy, h:mm a zzz", java.util.Locale.US)) +
+            " (" + now.zone.id + "). This is the real current time; answer from it, never from earlier messages.]"
+    }
+
     companion object {
         const val SOUL_FILE = "soul.md"
+
+        private val ASKS_TIME = Regex(
+            "\\b(time|clock|date|today|tonight|tomorrow|yesterday|day is it|what day|weekday|month|year is it|o'?clock|am i late|how long until|countdown)\\b",
+            RegexOption.IGNORE_CASE
+        )
 
         val DEFAULT_SOUL = """
             # Soul

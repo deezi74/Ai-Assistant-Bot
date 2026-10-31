@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent"
         minSdk = 28
         targetSdk = 35
-        versionCode = 15
-        versionName = "2.2.0"
+        versionCode = 16
+        versionName = "2.2.1"
 
         // Public OAuth app ID for "Sign in with GitHub" (device flow). Can also be entered in the app.
         buildConfigField("String", "GITHUB_CLIENT_ID", "\"${System.getenv("TRUAGENT_GITHUB_CLIENT_ID") ?: ""}\"")

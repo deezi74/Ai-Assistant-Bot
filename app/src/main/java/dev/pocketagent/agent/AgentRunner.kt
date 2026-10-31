@@ -48,7 +48,13 @@ class AgentRunner(private val container: AppContainer) {
                     .append(". Let it flavour your personality when that fits.\n")
             }
             append("You have your own computer on this phone (the computer tool): build, save and run JavaScript programs there.\n")
-            if (s.offlineMode) append("Offline mode is on: web tools are disabled, answer from what you know.\n")
+            if (s.shareLocation) {
+                val near = if (WHERE.containsMatchIn(request)) runCatching { container.location.current()?.label }.getOrNull()
+                else container.location.lastLabel()
+                if (!near.isNullOrBlank()) append("The user is currently around: ").append(near.take(160)).append(". Use it for anything local.\n")
+                else append("Location sharing is on: use the location tool for where the user is; never guess it.\n")
+            }
+                        if (s.offlineMode) append("Offline mode is on: web tools are disabled, answer from what you know.\n")
             if (memory.isNotEmpty()) {
                 append("\n## Memory (facts about the user; use the remember tool to add more)\n")
                 append(newestLines(memory, MEMORY_BUDGET)).append('\n')
@@ -163,6 +169,7 @@ class AgentRunner(private val container: AppContainer) {
     }
 
     private companion object {
+        val WHERE = Regex("\\b(where|near|nearby|around here|local|location|weather|directions|address|city|town|time zone)\\b", RegexOption.IGNORE_CASE)
         const val MEMORY_BUDGET = 2_500
         const val SKILL_BUDGET = 700
         const val SKILLS_TOTAL_BUDGET = 3_500

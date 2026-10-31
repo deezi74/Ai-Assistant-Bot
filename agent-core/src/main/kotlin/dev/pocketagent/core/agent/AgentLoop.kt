@@ -76,7 +76,7 @@ class AgentLoop(
         }
         messages += ChatMessage(ChatRole.SYSTEM, system)
         messages += history.filter { it.role != ChatRole.SYSTEM }
-        messages += ChatMessage(ChatRole.USER, userMessage, userImageJpegBase64)
+        messages += ChatMessage(ChatRole.USER, userMessage + persona.clockNote(userMessage), userImageJpegBase64)
 
         for (step in 1..config.maxSteps) {
             val lastStep = step == config.maxSteps

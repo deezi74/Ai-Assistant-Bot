@@ -196,6 +196,12 @@ class AppContainer(val app: PocketAgentApp) {
     fun start() {
         appScope.launch(Dispatchers.IO) {
             workspace.ensureDefaultSkills()
+            // 2.0.1 could save empty facts like "For the next time I ask you"; drop them.
+            runCatching {
+                val memory = workspace.readMemory()
+                val vague = Regex("^- (?:for (?:the )?next time|next time|for later|for the future)[^\\n]*$", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE))
+                if (vague.containsMatchIn(memory)) workspace.writeMemory(memory.replace(Regex(vague.pattern + "\\n?", setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)), ""))
+            }
             try {
                 routines.rescheduleAll()
             } catch (e: Exception) {
