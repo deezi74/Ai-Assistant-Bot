@@ -61,7 +61,10 @@ class CharacterGenerator(private val settings: SecureSettings) {
             .addQueryParameter("nologo", "true")
             .addQueryParameter("safe", "true")
             .build()
-        http.newCall(Request.Builder().url(url).header("Accept", "image/*").build()).execute().use { resp ->
+        val request = Request.Builder().url(url).header("Accept", "image/*").apply {
+            settings.pollinationsToken?.let { header("Authorization", "Bearer $it") }
+        }.build()
+        http.newCall(request).execute().use { resp ->
             if (!resp.isSuccessful) throw IOException("Image service answered HTTP ${resp.code}. Try again in a minute.")
             val type = resp.header("Content-Type").orEmpty()
             val bytes = resp.body?.bytes() ?: throw IOException("Empty image")

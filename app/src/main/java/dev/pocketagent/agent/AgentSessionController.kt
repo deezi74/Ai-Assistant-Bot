@@ -186,7 +186,7 @@ class AgentSessionController(private val container: AppContainer) {
             var answer = ""
             try {
                 container.runner.newLoop()
-                    .run(history, prompt, mode, container.runner.extraContext(), image)
+                    .run(history, prompt, mode, container.runner.extraContext(mode), image)
                     .collect { event -> handle(event, answerId, conversationId) { answer = it } }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 container.workspace.log("W", "chat stopped by user")
@@ -224,7 +224,14 @@ class AgentSessionController(private val container: AppContainer) {
 
     // region Learning
 
+    private data class PendingReflection(val prompt: String, val answer: String, val tools: List<String>, val conversationId: Long)
+
+    private val pending = ArrayDeque<PendingReflection>()
+    private var idleJob: Job? = null
+
     private fun cancelLearning() {
+        idleJob?.cancel()
+        idleJob = null
         val running = learnJob
         if (running != null && running.isActive) {
             running.cancel()
@@ -233,7 +240,12 @@ class AgentSessionController(private val container: AppContainer) {
         learnJob = null
     }
 
-    /** Counts the task toward growth, then reflects on it in the background when it is worth it. */
+    /**
+     * Counts the task toward growth, then reflects on it. With a cloud model that
+     * happens right away; with the on-phone model it waits until the phone is idle
+     * or the app is in the background, because a reflection pass would evict the
+     * chat from the model's cache and make the next reply slow.
+     */
     private fun afterTask(prompt: String, answer: String, conversationId: Long) {
         val tools = synchronized(turnTools) { turnTools.toList() }
         val learner = container.learner
@@ -244,20 +256,49 @@ class AgentSessionController(private val container: AppContainer) {
             return
         }
         learnJob = container.appScope.launch {
-            kotlinx.coroutines.delay(REFLECT_DELAY_MS)
-            _state.update { if (!it.running) it.copy(activity = "learning") else it }
-            val learned = try {
-                learner.reflect(prompt, answer, tools)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                container.workspace.log("W", "reflection skipped: ${e.message}")
-                null
-            } finally {
-                _state.update { if (!it.running && it.activity == "learning") it.copy(activity = null) else it }
+            if (container.scheduler.activeProvider() === container.localEngine) {
+                synchronized(pending) {
+                    pending.addLast(PendingReflection(prompt, answer, tools, conversationId))
+                    while (pending.size > MAX_PENDING) pending.removeFirst()
+                }
+                announceGrowth(null, levelBefore, conversationId)
+                idleJob?.cancel()
+                idleJob = container.appScope.launch {
+                    kotlinx.coroutines.delay(IDLE_REFLECT_MS)
+                    flushLearning()
+                }
+                return@launch
             }
-            announceGrowth(learned, levelBefore, conversationId)
+            kotlinx.coroutines.delay(REFLECT_DELAY_MS)
+            reflectNow(PendingReflection(prompt, answer, tools, conversationId), levelBefore)
         }
+    }
+
+    /** Runs queued reflections now, if nothing else is using the model. Called when the app goes to the background. */
+    fun flushLearning() {
+        if (_state.value.running || learnJob?.isActive == true) return
+        val batch = synchronized(pending) { pending.toList().also { pending.clear() } }
+        if (batch.isEmpty()) return
+        learnJob = container.appScope.launch {
+            for (item in batch) {
+                reflectNow(item, container.learner.growth.value.level)
+            }
+        }
+    }
+
+    private suspend fun reflectNow(item: PendingReflection, levelBefore: Int) {
+        _state.update { if (!it.running) it.copy(activity = "learning") else it }
+        val learned = try {
+            container.learner.reflect(item.prompt, item.answer, item.tools)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            container.workspace.log("W", "reflection skipped: ${e.message}")
+            null
+        } finally {
+            _state.update { if (!it.running && it.activity == "learning") it.copy(activity = null) else it }
+        }
+        announceGrowth(learned, levelBefore, item.conversationId)
     }
 
     private fun announceGrowth(learned: Learned?, levelBefore: Int, conversationId: Long) {
@@ -415,6 +456,8 @@ class AgentSessionController(private val container: AppContainer) {
         private const val MAX_TERMINAL_LINES = 300
         private const val MAX_HISTORY = 40
         private const val REFLECT_DELAY_MS = 1_500L
+        private const val IDLE_REFLECT_MS = 180_000L
+        private const val MAX_PENDING = 4
         private const val LEVEL_UP_SHOW_MS = 4_000L
     }
 }

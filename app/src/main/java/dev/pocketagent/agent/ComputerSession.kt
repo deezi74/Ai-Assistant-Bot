@@ -84,6 +84,9 @@ class ComputerSession(workspace: Workspace) {
         dir
     }
 
+    /** A file inside [project] from a user-typed name; `..` cannot climb out of the computer. */
+    fun fileIn(project: File, name: String): File = sandbox.resolve(project, name.trim())
+
     suspend fun writeFile(file: File, content: String) = withContext(Dispatchers.IO) {
         guard(file)
         file.parentFile?.mkdirs()

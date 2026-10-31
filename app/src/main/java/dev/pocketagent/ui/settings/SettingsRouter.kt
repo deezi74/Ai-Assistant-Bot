@@ -74,6 +74,8 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "computers", "computer" -> ComputerScreen(viewModel, back)
             "coding", "code" -> CodeScreen(viewModel, back)
             "growth" -> GrowthScreen(viewModel, back)
+            "email" -> EmailConnectorScreen(viewModel, back)
+            "location" -> LocationConnectorScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)
@@ -127,7 +129,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Toll, "Token usage", "Per day and provider", onClick = { go("usage") })
 
         SectionTitle("Abilities")
-        SettingRow(Icons.Filled.Cable, "Connectors", "Web search, Hugging Face, providers", onClick = { go("connectors") })
+        SettingRow(Icons.Filled.Cable, "Connectors", "Email, location & places, web search, providers", onClick = { go("connectors") })
         SettingRow(Icons.Filled.PanTool, "Phone controls", if (settings.phoneControl) "Flashlight, volume, alarms, apps" else "Off", onClick = { go("phone") })
         SettingRow(Icons.Filled.Computer, "Computer", "${settings.assistantName}'s own computer on this phone", onClick = { go("computer") })
         SettingRow(Icons.Filled.Code, "Code", "Projects it builds and runs", onClick = { go("code") })

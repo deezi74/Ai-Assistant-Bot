@@ -14,8 +14,8 @@ android {
         applicationId = "dev.pocketagent"
         minSdk = 28
         targetSdk = 35
-        versionCode = 5
-        versionName = "1.4.0"
+        versionCode = 6
+        versionName = "1.5.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -114,7 +114,11 @@ android {
             excludes += listOf(
                 "/META-INF/{AL2.0,LGPL2.1}",
                 "/META-INF/INDEX.LIST",
-                "/META-INF/DEPENDENCIES"
+                "/META-INF/DEPENDENCIES",
+                "/META-INF/LICENSE.md",
+                "/META-INF/NOTICE.md",
+                "/META-INF/LICENSE.txt",
+                "/META-INF/NOTICE.txt"
             )
         }
         jniLibs {
@@ -163,6 +167,10 @@ dependencies {
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.exifinterface)
+
+    // IMAP email connector (app-password sign-in)
+    implementation(libs.android.mail)
+    implementation(libs.android.activation)
 
     // Coroutines + JSON
     implementation(libs.kotlinx.coroutines.android)

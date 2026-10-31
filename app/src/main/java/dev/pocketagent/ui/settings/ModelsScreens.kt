@@ -83,6 +83,14 @@ fun ModelsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     SubScreen("Models", onBack, actions = {
         IconButton(onClick = viewModel::refreshLocalModels) { Icon(Icons.Filled.Refresh, "Rescan") }
     }) {
+        SectionTitle("Speed")
+        SwitchRow(
+            "Quick replies",
+            "In Wit mode, answer straight away instead of a long hidden thinking pass (Qwen3 models). Research mode still thinks.",
+            settings.quickReplies
+        ) { c -> viewModel.updateSettings { it.copy(quickReplies = c) } }
+        Hint("Fastest setup: a small model (Qwen3 1.7B or Qwen2.5 3B), Quick replies on, and a 4096 context. The first message after loading is the slowest because the model reads its instructions once; later replies reuse that. A provider key (OpenRouter, OpenAI) answers fastest of all.")
+
         SectionTitle("Recommended for this phone")
         Hint("Your phone has ${formatBytes(viewModel.totalRamBytes)} of RAM. These models are tested with ${settings.assistantName}'s tools; one tap downloads and loads it.")
         RecommendedModels.all.sortedByDescending { it.id == viewModel.bestModel.id }.forEach { m ->

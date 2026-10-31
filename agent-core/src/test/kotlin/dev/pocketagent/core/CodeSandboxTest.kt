@@ -65,6 +65,18 @@ class CodeSandboxTest {
     }
 
     @Test
+    fun nestedRequireResolvesRelativeToEachModule() {
+        val pc = VirtualComputer(tmp.root)
+        pc.writeFile("app/main.js", "const u = require('./lib/util'); console.log(u.shout('hi'), require('./data.json').n)")
+        pc.writeFile("app/lib/util.js", "const fmt = require('./fmt'); module.exports = { shout: s => fmt.bang(s.toUpperCase()) };")
+        pc.writeFile("app/lib/fmt/index.js", "exports.bang = s => s + '!';")
+        pc.writeFile("app/data.json", "{\"n\": 7}")
+        assertEquals("HI! 7", pc.execute("run app/main.js"))
+        assertEquals("HI! 7", pc.execute("cd app && run main.js"))
+        assertTrue(pc.execute("eval require('../../../etc/passwd')").contains("error"))
+    }
+
+    @Test
     fun shellBuildsAndRunsAProject() {
         val pc = VirtualComputer(tmp.root)
         assertEquals("", pc.execute("mkdir -p hello && cd hello"))

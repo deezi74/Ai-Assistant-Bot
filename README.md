@@ -20,6 +20,8 @@ An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls 
 - **Appearance**: accent, six backgrounds including a light one, and eight text colours.
 - **Its own computer on the phone.** A sandboxed shell (`ls`, `cd`, `cat`, `mkdir`, `rm`, `grep`, `find`, `tree`, `run`) over a private folder, with JavaScript (ES6, Rhino interpreter) as the program language. The agent builds and runs projects there with the `computer` and `run_code` tools; you watch it in the Computer terminal and edit files in Code. No internet, no access to other apps, a 10 s time limit per run.
 - **AI-generated characters.** Describe anything in Avatar & name (or say "turn yourself into a robot owl" in chat) and it draws a new character in one of 8 styles. Free through Pollinations, or with your own OpenAI or OpenRouter key. Past characters stay in a gallery.
+- **Connectors.** Email over IMAP with an app password (Gmail, Yahoo, iCloud, AOL, Fastmail, any IMAP): summarize, search, read, mark read, archive and move to Trash; it never sends or permanently deletes. Location (platform LocationManager, opt-in) for local briefs; nearby places with distance, drive time (OSRM) and open/closed from OpenStreetMap hours, or Google Places with your key; weather from Open-Meteo.
+- **Speed.** The system prompt is ordered so the on-device KV cache is reused between turns (clock time moves into the user turn), memory and skills have size budgets, on-phone reflection waits until the app is idle or in the background, and Quick replies skips Qwen3's long thinking in Wit mode.
 - **Learns as it grows.** After each task it reflects and saves facts about you (memory.md), lessons (lessons.md) and new skills; it can also save skills itself with `learn_skill`. It earns XP and levels up (Settings ▸ Growth), and everything learned can be read and deleted.
 
 Upgrading from 1.1.0 resets chat history once because the database layout changed.
@@ -72,7 +74,8 @@ TruAgent/
 │           ├── data/AppDatabase.kt, SecureSettings.kt
 │           ├── service/AgentForegroundService.kt
 │           └── ui/ChatScreen.kt, SettingsSheet.kt, ChatViewModel.kt, theme/Theme.kt
-├── scripts/setup.sh, setup.ps1
+├── scripts/setup.sh, setup.ps1        # install SDK platform 35, build-tools, NDK, CMake + llama.cpp
+├── scripts/build-apk.sh, build-apk.ps1 # setup + build + copy to dist/ (+ --install over adb)
 └── .github/workflows/android.yml  # tests + APK + GitHub Release
 ```
 
@@ -87,7 +90,16 @@ The NDK and aapt2 that Google ships are x86_64-only on Linux, so **local builds 
 | **Chromebook (Crostini)** | Intel/AMD Chromebooks: same as Linux. ARM Chromebooks: build via GitHub Actions. Install the APK by opening it from the Files app (Play Store-enabled devices) or `adb install` after enabling ADB in Linux settings. |
 | **Android (Termux)** | Building Android apps on-device isn't reliable (no ARM64 aapt2/NDK from Google). Use the Release APK. Termux is handy for testing the core: `pkg install openjdk-17 git` → `./gradlew :agent-core:test`. |
 
-Install over USB: `adb install -r app/build/outputs/apk/release/app-release.apk`.
+One command does everything (SDK tools, llama.cpp, build, copy to `dist/`, optional install):
+
+```bash
+./scripts/build-apk.sh --install          # Linux / macOS / WSL / x86_64 Chromebook
+```
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\build-apk.ps1 -Install   # Windows
+```
+
+Install over USB by hand: `adb install -r dist/TruAgent-<version>-release-arm64.apk`.
 
 Push a model without downloading in-app:
 ```bash

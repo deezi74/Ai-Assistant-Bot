@@ -9,6 +9,9 @@ import dev.pocketagent.agent.AgentSessionController
 import dev.pocketagent.agent.ChangeCharacterTool
 import dev.pocketagent.agent.CharacterGenerator
 import dev.pocketagent.agent.ComputerSession
+import dev.pocketagent.agent.DeviceLocation
+import dev.pocketagent.agent.EmailClient
+import dev.pocketagent.agent.EmailTool
 import dev.pocketagent.agent.LearnSkillTool
 import dev.pocketagent.agent.Learner
 import dev.pocketagent.agent.PhoneTool
@@ -22,6 +25,10 @@ import dev.pocketagent.core.llm.ProviderScheduler
 import dev.pocketagent.core.llm.RemoteApiEngine
 import dev.pocketagent.core.tools.ComputerTool
 import dev.pocketagent.core.tools.CurrentTimeTool
+import dev.pocketagent.core.tools.LocationTool
+import dev.pocketagent.core.tools.PlacesTool
+import dev.pocketagent.core.tools.WeatherTool
+import dev.pocketagent.core.places.PlacesClient
 import dev.pocketagent.core.tools.FetchPageTool
 import dev.pocketagent.core.tools.RememberTool
 import dev.pocketagent.core.tools.RunCodeTool
@@ -112,6 +119,10 @@ class AppContainer(val app: PocketAgentApp) {
     val computer = ComputerSession(workspace)
     val characters = CharacterGenerator(settings)
     val learner = Learner(this)
+    val location = DeviceLocation(app) { settings.current.shareLocation }
+    val places = PlacesClient(googleKey = { settings.googlePlacesKey })
+    val email = EmailClient(settings)
+    private val imperial: () -> Boolean = { DeviceLocation.prefersImperial() }
 
     val tools = ToolRegistry(
         listOf(
@@ -123,6 +134,10 @@ class AppContainer(val app: PocketAgentApp) {
             ComputerTool(computer.computer, computer::recordAgent),
             RunCodeTool(computer.sandbox, computer::recordAgent),
             LearnSkillTool(workspace, learner),
+            LocationTool(location::current, places) { settings.current.shareLocation },
+            OnlineOnlyTool(PlacesTool(places, location::current, imperial), offline),
+            OnlineOnlyTool(WeatherTool(places, location::current, imperial), offline),
+            OnlineOnlyTool(EmailTool(email) { settings.current.emailCanOrganize }, offline),
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },

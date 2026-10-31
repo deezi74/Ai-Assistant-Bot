@@ -83,6 +83,10 @@ private fun sceneFor(activity: String): Scene = when {
     activity == "learning" -> Scene("🌱", Motion.PULSE, "learning from that", glow = Color(0xFF9BE7A0))
     activity == "levelup" -> Scene("⭐", Motion.ORBIT, "levelled up!", glow = Color(0xFFFFD54F))
     activity == "change_character" -> Scene("🎨", Motion.WIGGLE, "drawing a new look")
+    activity == "email" -> Scene("📬", Motion.BOB, "checking your email")
+    activity == "location" -> Scene("📍", Motion.PULSE, "finding where you are")
+    activity == "places" -> Scene("🧭", Motion.ORBIT, "looking up places nearby")
+    activity == "weather" -> Scene("⛅", Motion.BOB, "checking the weather")
     else -> Scene("⚙️", Motion.ORBIT, "using ${activity.replace('_', ' ')}")
 }
 

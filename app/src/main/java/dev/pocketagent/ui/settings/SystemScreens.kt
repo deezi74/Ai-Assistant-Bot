@@ -136,6 +136,7 @@ fun TokenUsageScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 @Composable
 fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val emailAccount by viewModel.emailAccount.collectAsStateWithLifecycle()
     val mounts by viewModel.mounts.collectAsStateWithLifecycle()
     SubScreen("Connectors", onBack) {
         Hint("Services the assistant can reach. Everything is off-device only when you use it.")
@@ -158,7 +159,147 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             "Shared folders", if (mounts.isEmpty()) "No folders mounted" else "${mounts.size} folder(s), read-only",
             connected = mounts.isNotEmpty(), action = "Mount"
         ) { viewModel.push("mounts") }
-        Hint("Email, calendar and other account connectors are not part of this build.")
+        ConnectorCard(
+            "Email", emailAccount?.let { "${it.user} · ${if (settings.emailCanOrganize) "read and organize" else "read only"}" } ?: "Not connected",
+            connected = emailAccount != null, action = if (emailAccount != null) "Manage" else "Connect"
+        ) { viewModel.push("email") }
+        ConnectorCard(
+            "Location & places",
+            if (settings.shareLocation) "On · nearby places, distances, opening hours, weather" else "Off",
+            connected = settings.shareLocation, action = "Set up"
+        ) { viewModel.push("location") }
+        Hint("Calendar and contacts are not connected in this build.")
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun EmailConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val account by viewModel.emailAccount.collectAsStateWithLifecycle()
+    val status by viewModel.emailStatus.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val initialPreset = viewModel.emailPresets.firstOrNull { it.host == account?.host } ?: viewModel.emailPresets.first()
+    var presetId by remember { mutableStateOf(account?.let { if (initialPreset.host == it.host) initialPreset.id else "other" } ?: initialPreset.id) }
+    val preset = viewModel.emailPresets.first { it.id == presetId }
+    var host by remember { mutableStateOf(account?.host ?: preset.host) }
+    var port by remember { mutableStateOf((account?.port ?: 993).toString()) }
+    var user by remember { mutableStateOf(account?.user ?: "") }
+    var password by remember { mutableStateOf("") }
+    var confirmDisconnect by remember { mutableStateOf(false) }
+
+    SubScreen("Email", onBack) {
+        Hint("${settings.assistantName} reads your inbox over IMAP to summarize it, find messages, and keep it tidy. Ask things like \"what's new in my email?\" or \"archive the newsletters from this week\". You can also make a Routine for a morning email update.")
+        SectionTitle("Provider")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            viewModel.emailPresets.forEach { p ->
+                val selected = presetId == p.id
+                Text(
+                    p.label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selected) Color.Black else Palette.Text,
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(if (selected) Palette.Accent else Palette.SurfaceHigh)
+                        .clickable {
+                            presetId = p.id
+                            if (p.host.isNotEmpty()) host = p.host
+                            port = p.port.toString()
+                        }
+                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                )
+            }
+        }
+        Hint(preset.help)
+        if (preset.id == "gmail") {
+            OutlinedButton(onClick = { openUrl(context, "https://myaccount.google.com/apppasswords") }) { Text("Create a Gmail app password") }
+        }
+        AppTextField(user, { user = it.trim() }, "Email address")
+        SecretField(password, { password = it }, if (account != null) "App password (saved; enter to replace)" else "App password")
+        if (preset.id == "other") {
+            AppTextField(host, { host = it.trim() }, "IMAP server, e.g. imap.example.com")
+            AppTextField(port, { port = it.filter(Char::isDigit).take(5) }, "Port (usually 993)")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { viewModel.connectEmail(host, port.toIntOrNull() ?: 993, user, password); password = "" },
+                colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+            ) { Text(if (account != null) "Save & test" else "Connect") }
+            if (account != null) OutlinedButton(onClick = { confirmDisconnect = true }) { Text("Disconnect") }
+        }
+        status?.let { Hint(it, if (it.startsWith("Connected")) Palette.Success else Palette.TextMuted) }
+
+        SectionTitle("Permissions")
+        SwitchRow(
+            "Let it organize",
+            "Archive, mark as read and move to Trash when you ask. Mail in Trash can be restored for about 30 days. Nothing is ever deleted permanently.",
+            settings.emailCanOrganize
+        ) { c -> viewModel.updateSettings { it.copy(emailCanOrganize = c) } }
+        Hint("Your app password is stored encrypted on this phone and is never included in backups. Email text is treated as untrusted: instructions hidden inside an email are ignored. It never sends email.")
+    }
+    if (confirmDisconnect) {
+        ConfirmDialog("Disconnect email?", "The app password is removed from this phone.", "Disconnect", { viewModel.disconnectEmail() }, { confirmDisconnect = false })
+    }
+}
+
+@Composable
+fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val where by viewModel.whereAmI.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val tick = rememberResumeTick()
+    val granted = remember(tick) { viewModel.hasLocationPermission() }
+    val locationOn = remember(tick) { viewModel.isLocationOn() }
+    var placesKey by remember { mutableStateOf("") }
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        if (result.values.any { it }) viewModel.updateSettings { it.copy(shareLocation = true) }
+    }
+    val askPermission = {
+        launcher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+    }
+
+    SubScreen("Location & places", onBack) {
+        Hint("With your location ${settings.assistantName} can brief you on the day with local weather, tell you how far something is, and whether a business or restaurant is open right now.")
+        SwitchRow(
+            "Share my location with ${settings.assistantName}",
+            "Read only when a question needs it, never in the background or sent anywhere else",
+            settings.shareLocation && granted
+        ) { on ->
+            if (on && !granted) askPermission() else viewModel.updateSettings { it.copy(shareLocation = on) }
+        }
+        PermissionCard("Location permission", "Precise or approximate", granted) { askPermission() }
+        if (!locationOn) {
+            PermissionCard("Phone location is off", "Turn on Location in quick settings", false) {
+                startSafely(context, Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+            }
+        }
+        if (settings.shareLocation && granted) {
+            OutlinedButton(onClick = { viewModel.testLocation() }) { Text("Where am I?") }
+            where?.let { Hint(it) }
+        }
+
+        SectionTitle("Places data")
+        Hint("Free by default: OpenStreetMap for places and opening hours, OSRM for drive times, Open-Meteo for weather. Hours in OpenStreetMap can be missing or out of date.")
+        Hint(
+            if (viewModel.hasPlacesKey) "A Google Places key is saved: live open/closed status, ratings and better coverage."
+            else "Optional: add a Google Places API key (Places API (New)) for live open/closed status and ratings. Google bills your account per search."
+        )
+        SecretField(placesKey, { placesKey = it }, if (viewModel.hasPlacesKey) "Google Places key (saved)" else "Google Places API key (optional)")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(onClick = { viewModel.savePlacesKey(placesKey); placesKey = "" }, enabled = placesKey.isNotBlank()) { Text("Save key") }
+            if (viewModel.hasPlacesKey) OutlinedButton(onClick = { viewModel.savePlacesKey(null) }) { Text("Remove key") }
+        }
+
+        SectionTitle("Try saying")
+        listOf(
+            "Brief me on my day",
+            "Is the closest pharmacy open right now?",
+            "How far is the airport?",
+            "Find a pizza place near me that's open",
+            "What's the weather this afternoon?"
+        ).forEach { example ->
+            SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
+        }
     }
 }
 
@@ -215,7 +356,7 @@ fun PermissionsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
     SubScreen("Permissions", onBack) {
-        Hint("TruAgent asks for as little as possible. No contacts, location, microphone recording or accessibility access.")
+        Hint("TruAgent asks for as little as possible. No contacts, microphone recording or accessibility access. Location is optional, in Connectors.")
         PermissionCard("Notifications", "Routine results and long-running chats", notificationsOk) {
             if (Build.VERSION.SDK_INT >= 33) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }

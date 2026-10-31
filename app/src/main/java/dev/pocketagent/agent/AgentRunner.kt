@@ -31,8 +31,11 @@ class AgentRunner(private val container: AppContainer) {
         )
     }
 
-    /** App-owned system prompt sections. */
-    suspend fun extraContext(): String {
+    /**
+     * App-owned system prompt sections, each with a character budget so a growing
+     * memory or skill list cannot slow every reply down.
+     */
+    suspend fun extraContext(mode: AgentMode = container.settings.current.mode): String {
         val s = container.settings.current
         val memory = container.workspace.readMemory().trim()
         val skills = container.workspace.skills().filter { it.enabled }
@@ -41,36 +44,66 @@ class AgentRunner(private val container: AppContainer) {
             append("## Identity\nYour name is ").append(s.assistantName.ifBlank { "Nova" }).append(". Answer to that name.\n")
             if (s.userName.isNotBlank()) append("The user's name is ").append(s.userName).append(".\n")
             if (s.avatarKind == "photo" && s.characterDescription.isNotBlank()) {
-                append("Your look (an AI-generated character the user chose): ").append(s.characterDescription)
+                append("Your look (an AI-generated character the user chose): ").append(s.characterDescription.take(300))
                     .append(". Let it flavour your personality when that fits.\n")
             }
             append("You have your own computer on this phone (the computer tool): build, save and run JavaScript programs there.\n")
             if (s.offlineMode) append("Offline mode is on: web tools are disabled, answer from what you know.\n")
             if (memory.isNotEmpty()) {
-                append("\n## Memory (facts the user asked you to keep; use the remember tool to add more)\n")
-                append(memory.take(6000)).append('\n')
+                append("\n## Memory (facts about the user; use the remember tool to add more)\n")
+                append(newestLines(memory, MEMORY_BUDGET)).append('\n')
             }
             if (skills.isNotEmpty()) {
                 append("\n## Skills\n")
-                skills.forEach { append("### ").append(it.name).append('\n').append(it.instructions.trim()).append("\n\n") }
+                var used = 0
+                for (skill in skills) {
+                    val body = skill.instructions.trim().let { if (it.length > SKILL_BUDGET) it.take(SKILL_BUDGET) + "…" else it }
+                    if (used + body.length > SKILLS_TOTAL_BUDGET) break
+                    used += body.length
+                    append("### ").append(skill.name).append('\n').append(body).append("\n\n")
+                }
             }
             append(container.learner.promptSection())
             if (goals.isNotEmpty()) {
                 append("\n## Goals the user is tracking\n")
-                goals.take(20).forEach { g ->
+                goals.take(10).forEach { g ->
                     append("- [").append(g.category).append("] ").append(g.title)
-                    if (g.note.isNotBlank()) append(": ").append(g.note)
+                    if (g.note.isNotBlank()) append(": ").append(g.note.take(160))
                     append('\n')
                 }
             }
+            if (s.quickReplies && mode == AgentMode.WIT && usesQwen3()) {
+                // Qwen3's soft switch: answer straight away instead of a long hidden reasoning pass.
+                append("\n/no_think\n")
+            }
         }
+    }
+
+    private fun usesQwen3(): Boolean {
+        val local = (container.localEngine.state.value as? dev.pocketagent.llm.LocalModelState.Ready)?.fileName.orEmpty()
+        val remote = container.settings.current.remoteModel
+        return local.contains("qwen3", ignoreCase = true) || remote.contains("qwen3", ignoreCase = true)
+    }
+
+    /** Keeps the most recent lines of a markdown list within [budget] characters. */
+    private fun newestLines(text: String, budget: Int): String {
+        if (text.length <= budget) return text
+        val kept = ArrayDeque<String>()
+        var size = 0
+        for (line in text.lines().asReversed()) {
+            if (line.isBlank() || line.startsWith("#")) continue
+            if (size + line.length + 1 > budget) break
+            kept.addFirst(line)
+            size += line.length + 1
+        }
+        return kept.joinToString("\n")
     }
 
     /** Runs a prompt headlessly (routines, feed) and returns the final answer. */
     suspend fun runOnce(prompt: String, mode: AgentMode = AgentMode.RESEARCH, maxSteps: Int = 8): String {
         var answer = ""
         var failure: String? = null
-        newLoop(maxSteps = maxSteps, maxTokens = 1536).run(emptyList(), prompt, mode, extraContext()).collect { event ->
+        newLoop(maxSteps = maxSteps, maxTokens = 1536).run(emptyList(), prompt, mode, extraContext(mode)).collect { event ->
             when (event) {
                 is AgentEvent.Completed -> answer = event.answer
                 is AgentEvent.Failed -> failure = event.message
@@ -116,5 +149,11 @@ class AgentRunner(private val container: AppContainer) {
             else -> el
         }
         return JsonObject(arguments.mapValues { expand(it.value) })
+    }
+
+    private companion object {
+        const val MEMORY_BUDGET = 2_500
+        const val SKILL_BUDGET = 700
+        const val SKILLS_TOTAL_BUDGET = 3_500
     }
 }

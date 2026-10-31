@@ -113,7 +113,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations) lastBackgroundAt = System.currentTimeMillis()
+        if (!isChangingConfigurations) {
+            lastBackgroundAt = System.currentTimeMillis()
+            viewModel.onAppBackground()
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {

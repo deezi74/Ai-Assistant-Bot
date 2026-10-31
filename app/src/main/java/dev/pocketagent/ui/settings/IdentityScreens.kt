@@ -170,6 +170,22 @@ private fun AiCharacterSection(viewModel: AppViewModel, assistantName: String) {
         Hint("Drawn free by Pollinations, no account needed. Add an OpenAI or OpenRouter key in Manage providers for more choices.")
     }
 
+    if (sourceId == "free") {
+        var token by remember { mutableStateOf("") }
+        var showKey by remember { mutableStateOf(false) }
+        TextButton(onClick = { showKey = !showKey }) {
+            Text(if (viewModel.hasPollinationsToken) "Pollinations key saved · change" else "Have a Pollinations key? (optional, fewer limits)")
+        }
+        if (showKey) {
+            SecretField(token, { token = it }, "Pollinations API key")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = { viewModel.savePollinationsToken(token); token = ""; showKey = false }, enabled = token.isNotBlank()) { Text("Save key") }
+                if (viewModel.hasPollinationsToken) OutlinedButton(onClick = { viewModel.savePollinationsToken(null); showKey = false }) { Text("Remove") }
+            }
+            Hint("Stored encrypted on this phone and never included in backups.")
+        }
+    }
+
     val drawing = state is CharacterState.Drawing
     Button(
         onClick = { viewModel.generateCharacter(description.trim(), styleId, sourceId) },

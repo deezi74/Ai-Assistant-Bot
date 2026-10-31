@@ -275,7 +275,7 @@ class Learner(private val container: AppContainer) {
     /** Context block for the system prompt. */
     fun promptSection(): String {
         val g = _growth.value
-        val lessons = _lessons.value.takeLast(25)
+        val lessons = _lessons.value.takeLast(12)
         return buildString {
             append("\n## Growth\nYou are level ").append(g.level).append(" (").append(g.title).append("), with ")
                 .append(g.tasks).append(" tasks done. You learn from experience: apply the lessons below, and when you work out a ")

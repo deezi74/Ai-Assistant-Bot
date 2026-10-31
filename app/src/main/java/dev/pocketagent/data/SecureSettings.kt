@@ -50,6 +50,12 @@ data class AppSettings(
     val phoneControl: Boolean = true,
     /** Reflect after tasks and save lessons, facts and skills. */
     val autoLearn: Boolean = true,
+    /** Skip long hidden reasoning in Wit mode (Qwen3 /no_think) so replies start sooner. */
+    val quickReplies: Boolean = true,
+    /** Lets the assistant see the phone's location for briefs, distances and nearby places. */
+    val shareLocation: Boolean = false,
+    /** Lets the email tool move messages to Trash or archive them. */
+    val emailCanOrganize: Boolean = true,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -140,6 +146,9 @@ class SecureSettings(context: Context) : CredentialStore {
             textColor = prefs.getString("text_color", null) ?: d.textColor,
             phoneControl = prefs.getBoolean("phone_control", d.phoneControl),
             autoLearn = prefs.getBoolean("auto_learn", d.autoLearn),
+            quickReplies = prefs.getBoolean("quick_replies", d.quickReplies),
+            shareLocation = prefs.getBoolean("share_location", d.shareLocation),
+            emailCanOrganize = prefs.getBoolean("email_can_organize", d.emailCanOrganize),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -182,6 +191,9 @@ class SecureSettings(context: Context) : CredentialStore {
             .putString("text_color", next.textColor)
             .putBoolean("phone_control", next.phoneControl)
             .putBoolean("auto_learn", next.autoLearn)
+            .putBoolean("quick_replies", next.quickReplies)
+            .putBoolean("share_location", next.shareLocation)
+            .putBoolean("email_can_organize", next.emailCanOrganize)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
@@ -211,6 +223,37 @@ class SecureSettings(context: Context) : CredentialStore {
                 if (value.isNullOrBlank()) remove("hf_token") else putString("hf_token", value.trim())
             }.apply()
         }
+
+    // Connector secrets. The "token_" prefix keeps them out of Backup exports.
+
+    var pollinationsToken: String?
+        get() = secret("token_pollinations")
+        set(value) = putSecret("token_pollinations", value)
+
+    var googlePlacesKey: String?
+        get() = secret("token_google_places")
+        set(value) = putSecret("token_google_places", value)
+
+    /** IMAP account for the email tool: host, port, address and app password. */
+    var emailAccount: EmailAccount?
+        get() {
+            val host = secret("token_email_host") ?: return null
+            val user = secret("token_email_user") ?: return null
+            val pass = secret("token_email_password") ?: return null
+            return EmailAccount(host, secret("token_email_port")?.toIntOrNull() ?: 993, user, pass)
+        }
+        set(value) {
+            putSecret("token_email_host", value?.host)
+            putSecret("token_email_port", value?.port?.toString())
+            putSecret("token_email_user", value?.user)
+            putSecret("token_email_password", value?.password)
+        }
+
+    private fun secret(key: String): String? = prefs.getString(key, null)?.takeIf { it.isNotBlank() }
+
+    private fun putSecret(key: String, value: String?) {
+        prefs.edit().apply { if (value.isNullOrBlank()) remove(key) else putString(key, value.trim()) }.apply()
+    }
 
     /** Name → value pairs that tools can reference as $NAME. Stored encrypted. */
     var envVars: Map<String, String>
@@ -272,3 +315,5 @@ class SecureSettings(context: Context) : CredentialStore {
         private const val PREFS_NAME = "pocketagent_secure"
     }
 }
+
+data class EmailAccount(val host: String, val port: Int, val user: String, val password: String)

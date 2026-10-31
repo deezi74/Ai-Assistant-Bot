@@ -13,3 +13,4 @@ app/src/main/cpp/llama.cpp/
 *.keystore
 *.apk
 *.gguf
+dist/

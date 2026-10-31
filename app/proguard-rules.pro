@@ -40,3 +40,15 @@
 -dontwarn java.beans.**
 -dontwarn javax.lang.model.**
 -dontwarn jdk.dynalink.**
+
+# JavaMail (email connector) loads providers and handlers by name.
+-keep class com.sun.mail.** { *; }
+-keep class javax.mail.** { *; }
+-keep class javax.activation.** { *; }
+-keep class myjava.awt.datatransfer.** { *; }
+-dontwarn com.sun.mail.**
+-dontwarn javax.mail.**
+-dontwarn javax.activation.**
+-dontwarn java.awt.**
+-dontwarn javax.security.sasl.**
+-dontwarn javax.naming.**

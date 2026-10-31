@@ -322,10 +322,12 @@ private fun ProjectView(viewModel: AppViewModel, project: File, revision: Int, o
     }
     if (newFile) {
         TextInputDialog("New file", "", "Name, e.g. utils.js", confirm = "Create", onConfirm = { name ->
-            val clean = name.trim().replace("..", "").trimStart('/')
-            val f = File(project, clean)
-            viewModel.saveCode(f, "")
-            onOpen(f)
+            val f = viewModel.codeFileIn(project, name)
+            if (f != null) {
+                scope.launch {
+                    if (f.exists() || viewModel.saveCode(f, "")) onOpen(f)
+                }
+            }
         }, onDismiss = { newFile = false })
     }
     if (asking) AskToBuildDialog(viewModel, project) { asking = false }
@@ -354,16 +356,21 @@ private fun CodeEditor(viewModel: AppViewModel, project: File, file: File, onBac
         saved = content
     }
     val dirty = text != null && text != saved
-    val save: () -> Unit = {
-        text?.let { viewModel.saveCode(file, it); saved = it }
+    /** Writes the editor text and only then reports success, so Run never sees stale code. */
+    suspend fun saveNow(): Boolean {
+        val current = text ?: return false
+        if (current == saved) return true
+        return viewModel.saveCode(file, current).also { ok -> if (ok) saved = current }
     }
+    val save: () -> Unit = { scope.launch { saveNow() } }
 
     SubScreen(file.relativeTo(project).path, onBack, actions = {
         IconButton(onClick = save, enabled = dirty) { Icon(Icons.Filled.Save, "Save", tint = if (dirty) Palette.Accent else Palette.TextMuted) }
         if (file.extension == "js") {
             IconButton(onClick = {
-                save()
-                scope.launch { output = viewModel.runCode(file) }
+                scope.launch {
+                    if (saveNow()) output = viewModel.runCode(file)
+                }
             }) { Icon(Icons.Filled.PlayArrow, "Run", tint = Palette.Accent) }
         }
     }) {

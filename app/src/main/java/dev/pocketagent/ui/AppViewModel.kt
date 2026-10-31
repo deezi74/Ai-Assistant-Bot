@@ -10,6 +10,9 @@ import dev.pocketagent.agent.CharacterGenerator
 import dev.pocketagent.agent.CharacterStyle
 import dev.pocketagent.agent.ChatUiState
 import dev.pocketagent.agent.ComputerEntry
+import dev.pocketagent.agent.EmailClient
+import dev.pocketagent.agent.EmailPreset
+import dev.pocketagent.data.EmailAccount
 import dev.pocketagent.agent.Growth
 import dev.pocketagent.agent.ImageSource
 import dev.pocketagent.agent.Lesson
@@ -128,6 +131,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stop() = container.session.stop()
+
+    /** The app left the screen: a good moment for deferred on-phone learning. */
+    fun onAppBackground() = container.session.flushLearning()
     fun clearTerminal() = container.session.clearTerminal()
     fun setMode(mode: AgentMode) = container.settings.update { it.copy(mode = mode) }
     fun consumeDraft() = container.session.setDraft(null)
@@ -421,12 +427,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     suspend fun createProject(name: String): File = container.computer.createProject(name)
     suspend fun runCode(file: File): String = container.computer.runFile(file)
 
-    fun saveCode(file: File, content: String) = viewModelScope.launch {
-        try {
-            container.computer.writeFile(file, content)
-        } catch (e: Exception) {
-            toast("Couldn't save: ${e.message}")
-        }
+    /** Saves and returns true, or shows why it could not. Run only after this returns. */
+    suspend fun saveCode(file: File, content: String): Boolean = try {
+        container.computer.writeFile(file, content)
+        true
+    } catch (e: Exception) {
+        toast("Couldn't save: ${e.message}")
+        false
+    }
+
+    fun codeFileIn(project: File, name: String): File? = try {
+        container.computer.fileIn(project, name)
+    } catch (e: IllegalArgumentException) {
+        toast("That name points outside the computer")
+        null
     }
 
     fun deleteCode(file: File) = viewModelScope.launch {
@@ -441,6 +455,68 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun askAgentToBuild(task: String, project: File?) {
         val where = project?.let { " in the /${it.name} project" }.orEmpty()
         prefill("Use your computer to $task$where. Write the files, run the program to check it works, then tell me how to use it.", newSideChat = true)
+    }
+
+    // endregion
+
+    // region Connectors: email, location, places, image keys
+
+    val emailPresets: List<EmailPreset> = EmailClient.presets
+    private val _emailAccount = MutableStateFlow(container.settings.emailAccount?.let { it.copy(password = "") })
+    /** The connected account with the password blanked out. */
+    val emailAccount: StateFlow<EmailAccount?> = _emailAccount.asStateFlow()
+    private val _emailStatus = MutableStateFlow<String?>(null)
+    val emailStatus: StateFlow<String?> = _emailStatus.asStateFlow()
+
+    fun connectEmail(host: String, port: Int, user: String, password: String) {
+        val existing = container.settings.emailAccount
+        val pass = password.replace(" ", "").ifBlank { existing?.password.orEmpty() }
+        if (host.isBlank() || user.isBlank() || pass.isBlank()) {
+            _emailStatus.value = "Fill in the server, address and app password."
+            return
+        }
+        container.settings.emailAccount = EmailAccount(host.trim(), port, user.trim(), pass)
+        _emailAccount.value = EmailAccount(host.trim(), port, user.trim(), "")
+        _emailStatus.value = "Testing…"
+        viewModelScope.launch {
+            _emailStatus.value = try {
+                container.email.test()
+            } catch (e: javax.mail.AuthenticationFailedException) {
+                "Sign-in failed. Use an app password, not your normal password."
+            } catch (e: Exception) {
+                "Could not connect: ${e.message}"
+            }
+        }
+    }
+
+    fun disconnectEmail() {
+        container.settings.emailAccount = null
+        _emailAccount.value = null
+        _emailStatus.value = "Disconnected. The app password was removed from this phone."
+    }
+
+    fun hasLocationPermission(): Boolean = container.location.hasPermission()
+    fun isLocationOn(): Boolean = container.location.isLocationOn()
+
+    private val _whereAmI = MutableStateFlow<String?>(null)
+    val whereAmI: StateFlow<String?> = _whereAmI.asStateFlow()
+    fun testLocation() = viewModelScope.launch {
+        _whereAmI.value = "Finding you…"
+        val p = container.location.current()
+        _whereAmI.value = p?.let { it.label.ifBlank { String.format(java.util.Locale.US, "%.4f, %.4f", it.lat, it.lon) } }
+            ?: "No location yet. Check that Location is on and allowed for TruAgent."
+    }
+
+    val hasPlacesKey: Boolean get() = !container.settings.googlePlacesKey.isNullOrBlank()
+    fun savePlacesKey(key: String?) {
+        container.settings.googlePlacesKey = key
+        toast(if (key.isNullOrBlank()) "Google Places key removed, using OpenStreetMap" else "Google Places key saved")
+    }
+
+    val hasPollinationsToken: Boolean get() = !container.settings.pollinationsToken.isNullOrBlank()
+    fun savePollinationsToken(token: String?) {
+        container.settings.pollinationsToken = token
+        toast(if (token.isNullOrBlank()) "Pollinations key removed" else "Pollinations key saved (encrypted, not included in backups)")
     }
 
     // endregion

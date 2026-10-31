@@ -61,6 +61,7 @@ class JsSandbox(
             val scope = cx.initSafeStandardObjects()
             installHost(cx, scope, out, cwd)
             ScriptableObject.putProperty(scope, "args", cx.newArray(scope, args.toTypedArray<Any>()))
+            ScriptableObject.putProperty(scope, "__cwd", virtualPath(cwd))
             cx.evaluateString(scope, BOOTSTRAP, "bootstrap.js", 1, null)
             val result = cx.evaluateString(scope, source, sourceName, 1, null)
             val value = if (result == null || result is Undefined) null else format(cx, scope, result)
@@ -114,6 +115,10 @@ class JsSandbox(
         return file
     }
 
+    /** "/a/b.js" style path of [file] inside the workspace. */
+    fun virtualPath(file: File): String =
+        "/" + file.canonicalPath.removePrefix(rootPath).replace(File.separatorChar, '/').trimStart('/')
+
     private fun installHost(cx: Context, scope: Scriptable, out: StringBuilder, cwd: File) {
         fun path(args: Array<Any?>, i: Int = 0): File {
             val raw = args.getOrNull(i)?.let { Context.toString(it) } ?: throw Context.reportRuntimeError("path required")
@@ -163,6 +168,23 @@ class JsSandbox(
             cx.newArray(scope, names.toTypedArray<Any>())
         }
         define(scope, "__exists", 1) { args -> path(args).exists() }
+        // Module lookup relative to the requiring file: x, x.js, x.json, x/index.js.
+        define(scope, "__locate", 2) { args ->
+            val dir = try {
+                resolve(root, text(args, 0).ifEmpty { "/" })
+            } catch (e: IllegalArgumentException) {
+                throw Context.reportRuntimeError(e.message)
+            }
+            val request = text(args, 1)
+            val base = try {
+                resolve(dir, request)
+            } catch (e: IllegalArgumentException) {
+                throw Context.reportRuntimeError(e.message)
+            }
+            val found = listOf(base, File(base.path + ".js"), File(base.path + ".json"), File(base, "index.js"), File(base, "main.js"))
+                .firstOrNull { it.isFile } ?: throw Context.reportRuntimeError("cannot find module '$request'")
+            virtualPath(found)
+        }
         define(scope, "__remove", 1) { args ->
             val f = path(args)
             if (f.canonicalPath == rootPath) throw Context.reportRuntimeError("refusing to delete the workspace root")
@@ -233,15 +255,21 @@ class JsSandbox(
                 writeJSON: function (p, v) { return __write(p, JSON.stringify(v, null, 2)); }
               };
               var cache = {};
-              g.require = function (p) {
-                if (!/\.js${'$'}/.test(p)) p = p + '.js';
-                if (cache[p]) return cache[p].exports;
-                var m = { exports: {} };
-                cache[p] = m;
-                var fn = new Function('module', 'exports', 'require', __read(p));
-                fn(m, m.exports, g.require);
-                return m.exports;
-              };
+              function makeRequire(dir) {
+                return function (p) {
+                  var full = __locate(dir, String(p));
+                  if (cache[full]) return cache[full].exports;
+                  var m = { exports: {}, id: full };
+                  cache[full] = m;
+                  var src = __read(full);
+                  if (/\.json${'$'}/.test(full)) { m.exports = JSON.parse(src); return m.exports; }
+                  var here = full.substring(0, full.lastIndexOf('/')) || '/';
+                  var fn = new Function('module', 'exports', 'require', '__filename', '__dirname', src);
+                  fn(m, m.exports, makeRequire(here), full, here);
+                  return m.exports;
+                };
+              }
+              g.require = makeRequire(__cwd);
             })(this);
         """.trimIndent()
     }
