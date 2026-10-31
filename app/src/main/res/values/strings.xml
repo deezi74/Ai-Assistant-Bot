@@ -8,5 +8,5 @@
     <string name="action_stop">Stop</string>
     <string name="notif_channel_routines">Routines</string>
     <string name="unlock_title">Unlock PocketAgent</string>
-    <string name="unlock_subtitle">Confirm it's you to open your chats</string>
+    <string name="unlock_subtitle">Confirm it\'s you to open your chats</string>
 </resources>
