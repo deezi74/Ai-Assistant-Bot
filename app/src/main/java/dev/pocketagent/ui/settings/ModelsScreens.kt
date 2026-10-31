@@ -56,6 +56,7 @@ import dev.pocketagent.ui.LabeledSlider
 import dev.pocketagent.ui.SectionTitle
 import dev.pocketagent.ui.SubScreen
 import dev.pocketagent.ui.SurfaceCard
+import dev.pocketagent.ui.openUrl
 import dev.pocketagent.ui.SwitchRow
 import dev.pocketagent.ui.formatBytes
 import dev.pocketagent.ui.theme.Palette
@@ -228,6 +229,7 @@ fun ProvidersScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     var baseUrl by remember(settings.remoteKind) { mutableStateOf(settings.remoteBaseUrl) }
     var model by remember(settings.remoteKind) { mutableStateOf(settings.remoteModel) }
     var key by remember(settings.remoteKind) { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     SubScreen("Manage providers", onBack) {
         Hint("A cloud model the assistant can use instead of, or as backup to, the on-device one. Keys are encrypted with the Android Keystore.")
@@ -251,6 +253,20 @@ fun ProvidersScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             }
         }
         SectionTitle("${settings.remoteKind.label} settings")
+        if (settings.remoteKind == RemoteKind.FREELLMAPI) {
+            SurfaceCard {
+                Text("Free models through FreeLLMAPI", style = MaterialTheme.typography.titleMedium)
+                Hint(
+                    "FreeLLMAPI is a small server you run yourself. It pools the free tiers of many providers (Groq, Gemini, Mistral, OpenRouter free models and more) " +
+                        "behind one key and switches automatically when one hits its limit."
+                )
+                Hint("1. Run it: on a PC with Docker, curl -fsSL https://freellmapi.co/install.sh | bash. On this phone, in Termux: pkg install nodejs git, then git clone the repo, npm install, npm run dev.")
+                Hint("2. Open its dashboard (port 3001), add the free provider keys you have, and copy the unified key from the Keys page. It starts with freellmapi-.")
+                Hint("3. Base URL: http://localhost:3001/v1 when it runs on this phone, or http://<your PC's IP>:3001/v1 on the same Wi-Fi. Model: auto (or auto:fast / auto:smart). Paste the key below and Save.")
+                OutlinedButton(onClick = { openUrl(context, "https://github.com/tashfeenahmed/freellmapi") }) { Text("Open FreeLLMAPI on GitHub") }
+            }
+            Hint("Then set Models ▸ Routing to \"Provider first\" so chats use it, with the on-phone model as backup.")
+        }
         AppTextField(baseUrl, { baseUrl = it }, "Base URL")
         AppTextField(model, { model = it }, "Model")
         SecretField(key, { key = it }, if (viewModel.hasToken(settings.remoteKind)) "API key (saved, enter to replace)" else "API key")

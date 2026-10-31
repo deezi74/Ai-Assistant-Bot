@@ -127,4 +127,12 @@ class RemoteAndSearchTest {
         assertTrue(dest.readBytes().contentEquals(payload))
         server.shutdown()
     }
+
+    @org.junit.Test
+    fun plainHttpOnlyForPrivateHosts() {
+        val ok = listOf("http://localhost:3001/v1", "http://127.0.0.1:3001/v1", "http://192.168.1.20:3001/v1", "http://10.0.0.5/v1", "http://172.20.1.2:3001/v1", "http://mypc.local:3001/v1")
+        val bad = listOf("http://example.com/v1", "http://172.32.0.1/v1", "http://8.8.8.8/v1", "http://localhost.evil.com/v1")
+        ok.forEach { org.junit.Assert.assertTrue(it, dev.pocketagent.core.llm.RemoteApiEngine.isPrivateHost(it)) }
+        bad.forEach { org.junit.Assert.assertFalse(it, dev.pocketagent.core.llm.RemoteApiEngine.isPrivateHost(it)) }
+    }
 }

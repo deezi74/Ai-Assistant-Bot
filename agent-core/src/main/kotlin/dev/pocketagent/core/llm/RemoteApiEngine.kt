@@ -30,7 +30,9 @@ import java.util.concurrent.TimeUnit
 enum class RemoteKind(val label: String, val defaultBaseUrl: String, val defaultModel: String) {
     OPENAI_COMPATIBLE("OpenAI-compatible", "https://api.openai.com/v1", "gpt-4o-mini"),
     OPENROUTER("OpenRouter", "https://openrouter.ai/api/v1", "openrouter/auto"),
-    ANTHROPIC("Anthropic", "https://api.anthropic.com/v1", "claude-sonnet-5-5")
+    ANTHROPIC("Anthropic", "https://api.anthropic.com/v1", "claude-sonnet-5-5"),
+    /** Self-hosted router over many free-tier providers (github.com/tashfeenahmed/freellmapi), OpenAI-compatible. */
+    FREELLMAPI("FreeLLMAPI (free models)", "http://localhost:3001/v1", "auto")
 }
 
 data class RemoteEndpointConfig(
@@ -92,7 +94,7 @@ class RemoteApiEngine(
         val request = try {
             when (cfg.kind) {
                 RemoteKind.ANTHROPIC -> buildAnthropicRequest(cfg, token, messages, params)
-                RemoteKind.OPENAI_COMPATIBLE, RemoteKind.OPENROUTER -> buildOpenAiRequest(cfg, token, messages, params)
+                RemoteKind.OPENAI_COMPATIBLE, RemoteKind.OPENROUTER, RemoteKind.FREELLMAPI -> buildOpenAiRequest(cfg, token, messages, params)
             }
         } catch (e: IllegalArgumentException) {
             trySend(LlmEvent.Failure("Invalid endpoint URL: ${cfg.baseUrl}", e))
@@ -180,6 +182,10 @@ class RemoteApiEngine(
         messages: List<ChatMessage>,
         params: GenerationParams
     ): Request {
+        // Plain http is only for a router on this phone or the home network (FreeLLMAPI, Ollama, LM Studio).
+        require(!cfg.baseUrl.trim().startsWith("http://", ignoreCase = true) || isPrivateHost(cfg.baseUrl)) {
+            "http:// is only allowed for localhost or LAN addresses"
+        }
         val body = buildJsonObject {
             put("model", cfg.model)
             put("stream", true)
@@ -305,11 +311,7 @@ class RemoteApiEngine(
         body.ifBlank { "(no body)" }
     }
 
-    private fun isLocalUrl(url: String): Boolean {
-        val lower = url.lowercase()
-        return lower.contains("://localhost") || lower.contains("://127.0.0.1") ||
-            lower.contains("://10.0.2.2") || lower.contains("://192.168.")
-    }
+    private fun isLocalUrl(url: String): Boolean = isPrivateHost(url)
 
     /** Incremental parser for the two SSE dialects. */
     class SseStreamParser(private val kind: RemoteKind) {
@@ -338,7 +340,7 @@ class RemoteApiEngine(
             }
             return when (kind) {
                 RemoteKind.ANTHROPIC -> parseAnthropic(obj)
-                RemoteKind.OPENAI_COMPATIBLE, RemoteKind.OPENROUTER -> parseOpenAi(obj)
+                RemoteKind.OPENAI_COMPATIBLE, RemoteKind.OPENROUTER, RemoteKind.FREELLMAPI -> parseOpenAi(obj)
             }
         }
 
@@ -429,5 +431,12 @@ class RemoteApiEngine(
     companion object {
         const val ANTHROPIC_VERSION = "2023-06-01"
         private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+        private val PRIVATE_HOST = Regex(
+            """^https?://(localhost|127\.\d+\.\d+\.\d+|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|[a-z0-9-]+\.local)(:\d+)?(/.*)?$""",
+            RegexOption.IGNORE_CASE
+        )
+
+        /** Localhost, LAN addresses and .local names: the only places plain http:// is allowed. */
+        fun isPrivateHost(url: String): Boolean = PRIVATE_HOST.matches(url.trim())
     }
 }

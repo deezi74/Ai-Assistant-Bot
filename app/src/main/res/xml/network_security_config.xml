@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plain http is needed only to reach a model router on this phone or the home
+  network (FreeLLMAPI in Termux, Ollama, LM Studio). RemoteApiEngine refuses
+  http:// for any host that is not localhost, a LAN address or a .local name.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
