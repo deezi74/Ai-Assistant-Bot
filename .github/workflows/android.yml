@@ -52,19 +52,32 @@ jobs:
             git clone --depth 1 --branch "${LLAMA_CPP_TAG}" https://github.com/ggml-org/llama.cpp.git app/src/main/cpp/llama.cpp
           fi
 
-      - name: Restore signing key cache
+      # One stable signing key so every APK installs over the previous one and the
+      # SHA-1 registered with Google stays valid. A keystore in repository secrets
+      # (POCKETAGENT_KEYSTORE_BASE64 + passwords + alias) wins; otherwise CI makes
+      # one key once and keeps it in the Actions cache.
+      - name: Restore CI signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: pocketagent-debug-keystore-v1
+          path: ~/.truagent-signing
+          key: truagent-ci-signing-v2
 
-      - name: Decode release keystore (optional)
+      - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.POCKETAGENT_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ]; then
             echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
             echo "POCKETAGENT_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Signing with the keystore from repository secrets."
+          else
+            mkdir -p ~/.truagent-signing
+            if [ ! -f ~/.truagent-signing/ci.jks ]; then
+              keytool -genkeypair -keystore ~/.truagent-signing/ci.jks -alias truagent -keyalg RSA -keysize 2048 \
+                -validity 10000 -dname "CN=TruAgent CI" -storepass truagent-ci -keypass truagent-ci
+              echo "Created a new CI signing key."
+            fi
+            echo "POCKETAGENT_KEYSTORE=$HOME/.truagent-signing/ci.jks" >> "$GITHUB_ENV"
           fi
 
       - uses: gradle/actions/setup-gradle@v4
@@ -74,9 +87,9 @@ jobs:
 
       - name: Build release APK
         env:
-          POCKETAGENT_KEYSTORE_PASSWORD: ${{ secrets.POCKETAGENT_KEYSTORE_PASSWORD }}
-          POCKETAGENT_KEY_ALIAS: ${{ secrets.POCKETAGENT_KEY_ALIAS }}
-          POCKETAGENT_KEY_PASSWORD: ${{ secrets.POCKETAGENT_KEY_PASSWORD }}
+          POCKETAGENT_KEYSTORE_PASSWORD: ${{ secrets.POCKETAGENT_KEYSTORE_BASE64 && secrets.POCKETAGENT_KEYSTORE_PASSWORD || 'truagent-ci' }}
+          POCKETAGENT_KEY_ALIAS: ${{ secrets.POCKETAGENT_KEYSTORE_BASE64 && secrets.POCKETAGENT_KEY_ALIAS || 'truagent' }}
+          POCKETAGENT_KEY_PASSWORD: ${{ secrets.POCKETAGENT_KEYSTORE_BASE64 && secrets.POCKETAGENT_KEY_PASSWORD || 'truagent-ci' }}
           TRUAGENT_GITHUB_CLIENT_ID: ${{ vars.TRUAGENT_GITHUB_CLIENT_ID }}
         run: ./gradlew --no-daemon :app:assembleRelease
 
@@ -92,7 +105,7 @@ jobs:
           SHA1=$(keytool -printcert -jarfile "$OUT" 2>/dev/null | awk '/SHA1:/{print $2; exit}')
           if [ -z "$SHA1" ]; then
             SIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -n1)
-            SHA1=$("$SIGNER" verify --print-certs "$OUT" 2>/dev/null | awk -F': ' '/SHA-1 digest/{print toupper($2); exit}' | sed 's/../&:/g; s/:$//')
+            SHA1=$("$SIGNER" verify --print-certs "$OUT" 2>/dev/null | awk '/SHA-1 digest/{print toupper($NF); exit}' | sed 's/../&:/g; s/:$//')
           fi
           echo "sha1=${SHA1:-unknown}" >> "$GITHUB_OUTPUT"
 
