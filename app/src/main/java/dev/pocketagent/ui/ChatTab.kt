@@ -345,7 +345,11 @@ private fun ToolChip(item: ChatItem, accent: Color) {
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "${if (item.isError) "✗" else "⚙"} ${item.toolName ?: "tool"}",
+                text = when {
+                    item.toolName == "growth" -> "🌱 growing"
+                    item.isError -> "✗ ${item.toolName ?: "tool"}"
+                    else -> "⚙ ${item.toolName ?: "tool"}"
+                },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (item.isError) Palette.Error else accent,
                 modifier = Modifier.weight(1f)

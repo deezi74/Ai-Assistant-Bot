@@ -18,7 +18,9 @@ An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls 
 - **Phone controls** (`phone` tool): flashlight, volume, brightness, Do Not Disturb, alarms and timers, opening apps by name, settings panels, media keys, battery, clipboard, maps/links, and call/SMS drafts the user confirms. Toggle and one-time permissions in Settings ▸ Phone controls.
 - **Recommended models**: one-tap downloads of tested GGUF builds (Qwen3 0.6B/1.7B/4B/8B, Qwen2.5 3B, Gemma 3 1B/4B) with a pick based on the phone's RAM; the download loads itself when done. Also offered on the empty chat screen.
 - **Appearance**: accent, six backgrounds including a light one, and eight text colours.
-- Computers and Coding agents are listed but not available in this build.
+- **Its own computer on the phone.** A sandboxed shell (`ls`, `cd`, `cat`, `mkdir`, `rm`, `grep`, `find`, `tree`, `run`) over a private folder, with JavaScript (ES6, Rhino interpreter) as the program language. The agent builds and runs projects there with the `computer` and `run_code` tools; you watch it in the Computer terminal and edit files in Code. No internet, no access to other apps, a 10 s time limit per run.
+- **AI-generated characters.** Describe anything in Avatar & name (or say "turn yourself into a robot owl" in chat) and it draws a new character in one of 8 styles. Free through Pollinations, or with your own OpenAI or OpenRouter key. Past characters stay in a gallery.
+- **Learns as it grows.** After each task it reflects and saves facts about you (memory.md), lessons (lessons.md) and new skills; it can also save skills itself with `learn_skill`. It earns XP and levels up (Settings ▸ Growth), and everything learned can be read and deleted.
 
 Upgrading from 1.1.0 resets chat history once because the database layout changed.
 

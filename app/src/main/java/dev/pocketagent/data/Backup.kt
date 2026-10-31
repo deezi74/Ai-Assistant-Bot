@@ -39,6 +39,10 @@ class Backup(
                 add("persona/" + it.relativeTo(workspace.personaDir).invariantSeparatorsPath, it)
             }
             workspace.avatarDir.listFiles()?.forEach { add("avatar/${it.name}", it) }
+            workspace.charactersDir.listFiles()?.forEach { add("characters/${it.name}", it) }
+            workspace.computerDir.walkTopDown().filter { it.isFile }.forEach {
+                add("computer/" + it.relativeTo(workspace.computerDir).invariantSeparatorsPath, it)
+            }
             workspace.artifactsDir.listFiles()?.forEach { add("artifacts/${it.name}", it) }
             workspace.mediaDir.listFiles()?.forEach { add("media/${it.name}", it) }
         }
@@ -64,6 +68,8 @@ class Backup(
                     }
                     name.startsWith("persona/") -> write(File(workspace.personaDir, name.removePrefix("persona/")), zip)
                     name.startsWith("avatar/") -> write(File(workspace.avatarDir, name.removePrefix("avatar/")), zip)
+                    name.startsWith("characters/") -> write(File(workspace.charactersDir, name.removePrefix("characters/")), zip)
+                    name.startsWith("computer/") -> write(File(workspace.computerDir, name.removePrefix("computer/")), zip)
                     name.startsWith("artifacts/") -> write(File(workspace.artifactsDir, name.removePrefix("artifacts/")), zip)
                     name.startsWith("media/") -> write(File(workspace.mediaDir, name.removePrefix("media/")), zip)
                 }
@@ -81,6 +87,8 @@ class Backup(
     }
 
     private fun write(file: File, zip: ZipInputStream) {
+        // Refuse entries that try to climb out of their folder.
+        if (file.path.split(File.separatorChar, '/').any { it == ".." }) return
         file.parentFile?.mkdirs()
         file.outputStream().use { zip.copyTo(it) }
     }

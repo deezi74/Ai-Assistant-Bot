@@ -34,6 +34,12 @@ class Workspace(private val context: Context) {
     val artifactsDir: File get() = File(context.getExternalFilesDir(null) ?: root, "artifacts").apply { mkdirs() }
     val mediaDir: File get() = File(context.getExternalFilesDir(null) ?: root, "media").apply { mkdirs() }
     val avatarDir: File get() = File(root, "avatar").apply { mkdirs() }
+    /** AI-generated characters the user can switch between. */
+    val charactersDir: File get() = File(root, "characters").apply { mkdirs() }
+    /** The assistant's own computer: projects and files it builds with the computer tool. */
+    val computerDir: File get() = File(root, "computer").apply { mkdirs() }
+    val lessonsFile: File get() = File(personaDir, "lessons.md")
+    val growthFile: File get() = File(personaDir, "growth.json")
 
     private val _avatarVersion = MutableStateFlow(0)
     /** Bumps whenever the avatar photo changes so image composables reload. */
@@ -172,8 +178,15 @@ class Workspace(private val context: Context) {
     }
 
     /** Stores a square-cropped avatar photo and returns its file name. */
-    suspend fun importAvatar(uri: Uri): String = withContext(Dispatchers.IO) {
-        val bitmap = decodeScaled(uri, 768)
+    suspend fun importAvatar(uri: Uri): String = withContext(Dispatchers.IO) { storeAvatar(decodeScaled(uri, 768)) }
+
+    /** Stores an image file (a generated character) as the avatar and returns its file name. */
+    suspend fun importAvatarFile(file: File): String = withContext(Dispatchers.IO) {
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: throw IllegalArgumentException("Could not read image")
+        storeAvatar(scaleDown(bitmap, 768).also { if (it !== bitmap) bitmap.recycle() })
+    }
+
+    private fun storeAvatar(bitmap: Bitmap): String {
         val side = minOf(bitmap.width, bitmap.height)
         val square = Bitmap.createBitmap(bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side)
         avatarDir.listFiles()?.forEach { it.delete() }
@@ -182,7 +195,31 @@ class Workspace(private val context: Context) {
         if (square !== bitmap) square.recycle()
         bitmap.recycle()
         _avatarVersion.value = _avatarVersion.value + 1
-        name
+        return name
+    }
+
+    /** Saves generated image bytes to the characters gallery (newest first, capped) and returns the file. */
+    suspend fun saveCharacter(bytes: ByteArray, description: String): File = withContext(Dispatchers.IO) {
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: throw IllegalArgumentException("The image service returned something that is not a picture")
+        val scaled = scaleDown(bitmap, 768)
+        val file = File(charactersDir, "char-${System.currentTimeMillis()}.jpg")
+        file.outputStream().use { scaled.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+        File(charactersDir, file.nameWithoutExtension + ".txt").writeText(description)
+        if (scaled !== bitmap) scaled.recycle()
+        bitmap.recycle()
+        characters().drop(MAX_CHARACTERS).forEach { deleteCharacter(it) }
+        file
+    }
+
+    fun characters(): List<File> = charactersDir.listFiles { f -> f.isFile && f.name.endsWith(".jpg") }
+        ?.sortedByDescending { it.lastModified() }
+        .orEmpty()
+
+    fun characterDescription(file: File): String = File(file.parentFile, file.nameWithoutExtension + ".txt").takeIf { it.isFile }?.readText().orEmpty()
+
+    fun deleteCharacter(file: File) {
+        File(file.parentFile, file.nameWithoutExtension + ".txt").delete()
+        file.delete()
     }
 
     fun avatarFile(name: String): File = File(avatarDir, name)
@@ -264,5 +301,6 @@ class Workspace(private val context: Context) {
 
     companion object {
         private const val MAX_LOG_LINES = 500
+        private const val MAX_CHARACTERS = 24
     }
 }

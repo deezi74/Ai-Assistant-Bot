@@ -73,6 +73,16 @@ private fun sceneFor(activity: String): Scene = when {
     activity == "phone:dnd" -> Scene("🌙", Motion.PULSE, "setting Do Not Disturb")
     activity == "phone:battery" -> Scene("🔋", Motion.PULSE, "checking the battery")
     activity.startsWith("phone") -> Scene("📱", Motion.WIGGLE, "using your phone")
+    activity == "computer:write" -> Scene("⌨️", Motion.TYPE, "coding on its computer")
+    activity == "computer:run" -> Scene("🖥️", Motion.TYPE, "running a program", glow = Color(0xFF9BE7A0))
+    activity == "computer:read" -> Scene("🖥️", Motion.TYPE, "looking through its files")
+    activity == "computer:delete" -> Scene("🧹", Motion.WIGGLE, "tidying its computer")
+    activity.startsWith("computer") -> Scene("💻", Motion.TYPE, "working on its computer")
+    activity == "run_code" -> Scene("🧪", Motion.WIGGLE, "running code")
+    activity == "learn_skill" -> Scene("📚", Motion.BOB, "learning a new skill")
+    activity == "learning" -> Scene("🌱", Motion.PULSE, "learning from that", glow = Color(0xFF9BE7A0))
+    activity == "levelup" -> Scene("⭐", Motion.ORBIT, "levelled up!", glow = Color(0xFFFFD54F))
+    activity == "change_character" -> Scene("🎨", Motion.WIGGLE, "drawing a new look")
     else -> Scene("⚙️", Motion.ORBIT, "using ${activity.replace('_', ' ')}")
 }
 

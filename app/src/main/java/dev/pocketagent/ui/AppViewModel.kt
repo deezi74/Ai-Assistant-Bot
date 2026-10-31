@@ -6,7 +6,13 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.pocketagent.PocketAgentApp
+import dev.pocketagent.agent.CharacterGenerator
+import dev.pocketagent.agent.CharacterStyle
 import dev.pocketagent.agent.ChatUiState
+import dev.pocketagent.agent.ComputerEntry
+import dev.pocketagent.agent.Growth
+import dev.pocketagent.agent.ImageSource
+import dev.pocketagent.agent.Lesson
 import dev.pocketagent.core.agent.AgentMode
 import dev.pocketagent.core.llm.HfFile
 import dev.pocketagent.core.llm.HfReference
@@ -342,6 +348,113 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     // endregion
 
+    // region AI characters
+
+    val characterStyles: List<CharacterStyle> = CharacterGenerator.styles
+    fun imageSources(): List<ImageSource> = container.characters.sources()
+
+    private val _character = MutableStateFlow<CharacterState>(CharacterState.Idle)
+    val character: StateFlow<CharacterState> = _character.asStateFlow()
+
+    private val _characterGallery = MutableStateFlow(workspace.characters())
+    val characterGallery: StateFlow<List<File>> = _characterGallery.asStateFlow()
+
+    fun generateCharacter(description: String, styleId: String, sourceId: String) {
+        if (_character.value is CharacterState.Drawing) return
+        if (settings.value.offlineMode) {
+            toast("Offline mode is on. Turn it off in Network to draw a character.")
+            return
+        }
+        val style = CharacterGenerator.style(styleId)
+        _character.value = CharacterState.Drawing(description)
+        updateSettings { it.copy(imageSource = sourceId) }
+        viewModelScope.launch {
+            try {
+                val bytes = container.characters.generate(description, style, kotlin.random.Random.nextInt(1, 1_000_000), sourceId)
+                val file = workspace.saveCharacter(bytes, description)
+                _characterGallery.value = workspace.characters()
+                _character.value = CharacterState.Preview(file, description)
+            } catch (e: Exception) {
+                workspace.log("W", "character generation failed: ${e.message}")
+                _character.value = CharacterState.Failed(e.message ?: "Could not draw the character")
+            }
+        }
+    }
+
+    fun useCharacter(file: File, description: String = workspace.characterDescription(file)) = viewModelScope.launch {
+        try {
+            val name = workspace.importAvatarFile(file)
+            updateSettings { it.copy(avatarKind = "photo", avatarValue = name, characterDescription = description.take(300)) }
+            _character.value = CharacterState.Idle
+            toast("${settings.value.assistantName} has a new look")
+        } catch (e: Exception) {
+            toast("Couldn't use that character: ${e.message}")
+        }
+    }
+
+    fun deleteCharacter(file: File) = viewModelScope.launch(Dispatchers.IO) {
+        workspace.deleteCharacter(file)
+        _characterGallery.value = workspace.characters()
+        val current = _character.value
+        if (current is CharacterState.Preview && current.file == file) _character.value = CharacterState.Idle
+    }
+
+    fun dismissCharacter() {
+        if (_character.value !is CharacterState.Drawing) _character.value = CharacterState.Idle
+    }
+
+    // endregion
+
+    // region Computer & code
+
+    val computerTranscript: StateFlow<List<ComputerEntry>> = container.computer.transcript
+    val computerRevision: StateFlow<Int> = container.computer.revision
+    val computerRoot: File get() = container.computer.root
+    fun computerPrompt(): String = container.computer.computer.prompt
+
+    fun runComputerCommand(command: String) = viewModelScope.launch { container.computer.run(command) }
+    fun clearComputer() = container.computer.clearTranscript()
+
+    fun codeProjects(): List<File> = container.computer.projects()
+    fun codeFiles(project: File): List<File> = container.computer.files(project)
+    suspend fun readCode(file: File): String = container.computer.readFile(file)
+    suspend fun createProject(name: String): File = container.computer.createProject(name)
+    suspend fun runCode(file: File): String = container.computer.runFile(file)
+
+    fun saveCode(file: File, content: String) = viewModelScope.launch {
+        try {
+            container.computer.writeFile(file, content)
+        } catch (e: Exception) {
+            toast("Couldn't save: ${e.message}")
+        }
+    }
+
+    fun deleteCode(file: File) = viewModelScope.launch {
+        try {
+            container.computer.delete(file)
+        } catch (e: Exception) {
+            toast("Couldn't delete: ${e.message}")
+        }
+    }
+
+    /** Hands a coding task to the agent in a side chat, pointed at its computer. */
+    fun askAgentToBuild(task: String, project: File?) {
+        val where = project?.let { " in the /${it.name} project" }.orEmpty()
+        prefill("Use your computer to $task$where. Write the files, run the program to check it works, then tell me how to use it.", newSideChat = true)
+    }
+
+    // endregion
+
+    // region Growth
+
+    val growth: StateFlow<Growth> = container.learner.growth
+    val lessons: StateFlow<List<Lesson>> = container.learner.lessons
+    fun deleteLesson(lesson: Lesson) = viewModelScope.launch(Dispatchers.IO) { container.learner.deleteLesson(lesson) }
+    fun clearLessons() = viewModelScope.launch(Dispatchers.IO) { container.learner.clearLessons() }
+    fun resetGrowth() = viewModelScope.launch(Dispatchers.IO) { container.learner.resetGrowth() }
+
+    // endregion
+
     // region Soul, memory, skills, env vars
 
     fun readSoul(): String = container.persona.readSoul()
@@ -660,4 +773,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // endregion
+}
+
+sealed interface CharacterState {
+    data object Idle : CharacterState
+    data class Drawing(val description: String) : CharacterState
+    data class Preview(val file: File, val description: String) : CharacterState
+    data class Failed(val message: String) : CharacterState
 }

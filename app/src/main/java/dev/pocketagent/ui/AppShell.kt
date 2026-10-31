@@ -40,6 +40,10 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Spa
+import dev.pocketagent.ui.settings.LevelBadge
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
@@ -217,6 +221,7 @@ private fun Header(
                 val sub = when {
                     tab != Tab.CHAT -> tab.label
                     chat.running -> (activityCaption(chat.activity) ?: "thinking") + "…"
+                    chat.activity != null -> activityCaption(chat.activity) ?: settings.mode.label
                     chat.isMain -> settings.mode.label
                     else -> chat.title
                 }
@@ -328,6 +333,7 @@ private fun DrawerContent(viewModel: AppViewModel, close: () -> Unit) {
     val archived by viewModel.archivedChats.collectAsStateWithLifecycle()
     val results by viewModel.searchResults.collectAsStateWithLifecycle()
     val avatarVersion by viewModel.avatarVersion.collectAsStateWithLifecycle()
+    val growth by viewModel.growth.collectAsStateWithLifecycle()
     var query by rememberSaveable { mutableStateOf("") }
     var showArchived by rememberSaveable { mutableStateOf(false) }
     var actionsFor by remember { mutableStateOf<ConversationEntity?>(null) }
@@ -351,8 +357,12 @@ private fun DrawerContent(viewModel: AppViewModel, close: () -> Unit) {
                     AssistantAvatar(settings.avatarKind, settings.avatarValue, settings.assistantName, viewModel.avatarPhoto(settings), 44.dp, photoVersion = avatarVersion)
                     Spacer(Modifier.width(12.dp))
                     Column {
-                        Text(settings.assistantName, style = MaterialTheme.typography.titleLarge)
-                        Text("Tap to change name or avatar", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(settings.assistantName, style = MaterialTheme.typography.titleLarge)
+                            Spacer(Modifier.width(8.dp))
+                            LevelBadge(growth)
+                        }
+                        Text("Tap to change name or character", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                     }
                 }
             }
@@ -392,6 +402,14 @@ private fun DrawerContent(viewModel: AppViewModel, close: () -> Unit) {
                     DrawerItem(tabIcon(t), t.label, selected = tab == t && t != Tab.CHAT) {
                         close()
                         viewModel.selectTab(t)
+                    }
+                }
+                item { SectionTitle("Workspace") }
+                item {
+                    Column {
+                        DrawerItem(Icons.Filled.Computer, "Computer", selected = false) { close(); viewModel.push("computer") }
+                        DrawerItem(Icons.Filled.Code, "Code", selected = false) { close(); viewModel.push("code") }
+                        DrawerItem(Icons.Filled.Spa, "Growth · level ${growth.level}", selected = false) { close(); viewModel.push("growth") }
                     }
                 }
                 item {

@@ -48,6 +48,12 @@ data class AppSettings(
     val textColor: String = "auto",
     /** Lets the assistant use the phone tool (flashlight, volume, alarms, opening apps). */
     val phoneControl: Boolean = true,
+    /** Reflect after tasks and save lessons, facts and skills. */
+    val autoLearn: Boolean = true,
+    /** What the AI-generated character looks like; shared with the model so it can stay in character. */
+    val characterDescription: String = "",
+    /** "free", "openai" or "openrouter": where AI characters are drawn. */
+    val imageSource: String = "free",
     val fontScale: Float = 1.0f,
     val appLock: Boolean = false,
     val wifiOnlyDownloads: Boolean = false,
@@ -133,6 +139,9 @@ class SecureSettings(context: Context) : CredentialStore {
             background = prefs.getString("background", null) ?: if (prefs.getBoolean("amoled", true)) "black" else "charcoal",
             textColor = prefs.getString("text_color", null) ?: d.textColor,
             phoneControl = prefs.getBoolean("phone_control", d.phoneControl),
+            autoLearn = prefs.getBoolean("auto_learn", d.autoLearn),
+            characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
+            imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
             appLock = prefs.getBoolean("app_lock", d.appLock),
             wifiOnlyDownloads = prefs.getBoolean("wifi_only_downloads", d.wifiOnlyDownloads),
@@ -172,6 +181,9 @@ class SecureSettings(context: Context) : CredentialStore {
             .putString("background", next.background)
             .putString("text_color", next.textColor)
             .putBoolean("phone_control", next.phoneControl)
+            .putBoolean("auto_learn", next.autoLearn)
+            .putString("character_description", next.characterDescription)
+            .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
             .putBoolean("app_lock", next.appLock)
             .putBoolean("wifi_only_downloads", next.wifiOnlyDownloads)

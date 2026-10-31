@@ -40,6 +40,11 @@ class AgentRunner(private val container: AppContainer) {
         return buildString {
             append("## Identity\nYour name is ").append(s.assistantName.ifBlank { "Nova" }).append(". Answer to that name.\n")
             if (s.userName.isNotBlank()) append("The user's name is ").append(s.userName).append(".\n")
+            if (s.avatarKind == "photo" && s.characterDescription.isNotBlank()) {
+                append("Your look (an AI-generated character the user chose): ").append(s.characterDescription)
+                    .append(". Let it flavour your personality when that fits.\n")
+            }
+            append("You have your own computer on this phone (the computer tool): build, save and run JavaScript programs there.\n")
             if (s.offlineMode) append("Offline mode is on: web tools are disabled, answer from what you know.\n")
             if (memory.isNotEmpty()) {
                 append("\n## Memory (facts the user asked you to keep; use the remember tool to add more)\n")
@@ -49,6 +54,7 @@ class AgentRunner(private val container: AppContainer) {
                 append("\n## Skills\n")
                 skills.forEach { append("### ").append(it.name).append('\n').append(it.instructions.trim()).append("\n\n") }
             }
+            append(container.learner.promptSection())
             if (goals.isNotEmpty()) {
                 append("\n## Goals the user is tracking\n")
                 goals.take(20).forEach { g ->

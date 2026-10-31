@@ -6,6 +6,11 @@ import android.app.NotificationManager
 import android.os.Build
 import dev.pocketagent.agent.AgentRunner
 import dev.pocketagent.agent.AgentSessionController
+import dev.pocketagent.agent.ChangeCharacterTool
+import dev.pocketagent.agent.CharacterGenerator
+import dev.pocketagent.agent.ComputerSession
+import dev.pocketagent.agent.LearnSkillTool
+import dev.pocketagent.agent.Learner
 import dev.pocketagent.agent.PhoneTool
 import dev.pocketagent.agent.SharedFolderTool
 import dev.pocketagent.core.agent.AgentMode
@@ -15,9 +20,11 @@ import dev.pocketagent.core.agent.ToolRegistry
 import dev.pocketagent.core.agent.ToolResult
 import dev.pocketagent.core.llm.ProviderScheduler
 import dev.pocketagent.core.llm.RemoteApiEngine
+import dev.pocketagent.core.tools.ComputerTool
 import dev.pocketagent.core.tools.CurrentTimeTool
 import dev.pocketagent.core.tools.FetchPageTool
 import dev.pocketagent.core.tools.RememberTool
+import dev.pocketagent.core.tools.RunCodeTool
 import dev.pocketagent.core.tools.SaveArtifactTool
 import dev.pocketagent.core.tools.TrackGoalTool
 import dev.pocketagent.core.tools.WebSearchTool
@@ -102,6 +109,10 @@ class AppContainer(val app: PocketAgentApp) {
 
     private val offline: () -> Boolean = { settings.current.offlineMode }
 
+    val computer = ComputerSession(workspace)
+    val characters = CharacterGenerator(settings)
+    val learner = Learner(this)
+
     val tools = ToolRegistry(
         listOf(
             OnlineOnlyTool(WebSearchTool({ settings.current.searchSettings }), offline),
@@ -109,6 +120,10 @@ class AppContainer(val app: PocketAgentApp) {
             CurrentTimeTool(),
             SharedFolderTool(app, workspace),
             PhoneTool(app) { settings.current.phoneControl },
+            ComputerTool(computer.computer, computer::recordAgent),
+            RunCodeTool(computer.sandbox, computer::recordAgent),
+            LearnSkillTool(workspace, learner),
+            OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             SaveArtifactTool { title, content, ext -> saveArtifact(title, content, ext) },
             RememberTool { fact -> withContext(Dispatchers.IO) { workspace.appendMemory(fact) } },
             TrackGoalTool { title, note, category ->

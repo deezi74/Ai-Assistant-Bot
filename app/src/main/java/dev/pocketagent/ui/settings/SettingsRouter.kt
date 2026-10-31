@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Toll
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material3.Text
@@ -70,16 +71,9 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "skills" -> SkillsScreen(viewModel, back)
             "connectors" -> ConnectorsScreen(viewModel, back)
             "hands", "phone" -> PhoneControlsScreen(viewModel, back)
-            "computers" -> NotInThisBuildScreen(
-                "Computers", back,
-                "Computers would pair a desktop so the assistant can run tasks there.",
-                "There is no desktop companion in this build, so nothing can be paired yet."
-            )
-            "coding" -> NotInThisBuildScreen(
-                "Coding agents", back,
-                "Coding agents would hand programming tasks to an external agent.",
-                "This build has no code execution or external coding agent. Ask in chat and the assistant answers with code you can copy."
-            )
+            "computers", "computer" -> ComputerScreen(viewModel, back)
+            "coding", "code" -> CodeScreen(viewModel, back)
+            "growth" -> GrowthScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)
@@ -106,6 +100,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
     val local by viewModel.localState.collectAsStateWithLifecycle()
     val mounts by viewModel.mounts.collectAsStateWithLifecycle()
     val env by viewModel.env.collectAsStateWithLifecycle()
+    val growth by viewModel.growth.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val go: (String) -> Unit = { viewModel.push(it) }
 
@@ -115,6 +110,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Psychology, "Soul", "Personality and voice (soul.md)", onClick = { go("soul") })
         SettingRow(Icons.Filled.Memory, "Memory", "What ${settings.assistantName} remembers about you", onClick = { go("memory") })
         SettingRow(Icons.Filled.Extension, "Skills", "Reusable instructions", onClick = { go("skills") })
+        SettingRow(Icons.Filled.TrendingUp, "Growth", "Level ${growth.level} · ${growth.title}" + if (settings.autoLearn) ", learning" else ", learning off", onClick = { go("growth") })
         SettingRow(Icons.Filled.Description, "System files", "soul.md, memory.md, skills", onClick = { go("files") })
 
         SectionTitle("Models")
@@ -133,8 +129,8 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SectionTitle("Abilities")
         SettingRow(Icons.Filled.Cable, "Connectors", "Web search, Hugging Face, providers", onClick = { go("connectors") })
         SettingRow(Icons.Filled.PanTool, "Phone controls", if (settings.phoneControl) "Flashlight, volume, alarms, apps" else "Off", onClick = { go("phone") })
-        SettingRow(Icons.Filled.Computer, "Computers", "Not in this build", tint = Palette.TextMuted, onClick = { go("computers") })
-        SettingRow(Icons.Filled.Code, "Coding agents", "Not in this build", tint = Palette.TextMuted, onClick = { go("coding") })
+        SettingRow(Icons.Filled.Computer, "Computer", "${settings.assistantName}'s own computer on this phone", onClick = { go("computer") })
+        SettingRow(Icons.Filled.Code, "Code", "Projects it builds and runs", onClick = { go("code") })
         SettingRow(Icons.Filled.Key, "Environment variables", if (env.isEmpty()) "None" else "${env.size} set", onClick = { go("env") })
 
         SectionTitle("Device")
@@ -158,16 +154,5 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Policy, "Privacy policy", onClick = { go("privacy") })
         SettingRow(Icons.AutoMirrored.Filled.Help, "Send feedback", "Opens GitHub issues", onClick = { openUrl(context, FEEDBACK_URL) })
         SettingRow(Icons.Filled.Tag, "Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
-    }
-}
-
-@Composable
-private fun NotInThisBuildScreen(title: String, onBack: () -> Unit, what: String, why: String) {
-    SubScreen(title, onBack) {
-        dev.pocketagent.ui.SurfaceCard {
-            Text("Not available in this build", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
-            dev.pocketagent.ui.Hint(what)
-            dev.pocketagent.ui.Hint(why)
-        }
     }
 }

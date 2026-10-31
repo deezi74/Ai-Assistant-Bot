@@ -18,6 +18,8 @@ dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.okhttp)
     implementation(libs.jsoup)
+    // Interpreted JavaScript for the on-phone code sandbox (no JIT, works on Android).
+    implementation(libs.rhino)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

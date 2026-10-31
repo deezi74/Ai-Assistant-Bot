@@ -64,6 +64,9 @@ class AgentSessionController(private val container: AppContainer) {
     val draft: StateFlow<String?> = _draft.asStateFlow()
 
     private var job: Job? = null
+    private var learnJob: Job? = null
+    /** Tool names the running task has called, for growth and reflection. */
+    private val turnTools = mutableListOf<String>()
     private val ids = AtomicLong(1)
     private fun newId() = ids.getAndIncrement()
 
@@ -155,6 +158,8 @@ class AgentSessionController(private val container: AppContainer) {
             }
         }.takeLast(MAX_HISTORY)
 
+        cancelLearning()
+        synchronized(turnTools) { turnTools.clear() }
         val answerId = newId()
         _state.update {
             it.copy(
@@ -212,9 +217,78 @@ class AgentSessionController(private val container: AppContainer) {
                     )
                 }
                 stopForegroundService()
+                if (answer.isNotBlank()) afterTask(prompt, answer, conversationId)
             }
         }
     }
+
+    // region Learning
+
+    private fun cancelLearning() {
+        val running = learnJob
+        if (running != null && running.isActive) {
+            running.cancel()
+            container.localEngine.abort()
+        }
+        learnJob = null
+    }
+
+    /** Counts the task toward growth, then reflects on it in the background when it is worth it. */
+    private fun afterTask(prompt: String, answer: String, conversationId: Long) {
+        val tools = synchronized(turnTools) { turnTools.toList() }
+        val learner = container.learner
+        val levelBefore = learner.growth.value.level
+        learner.recordTask(tools.size, tools.any { it == "computer" || it == "run_code" })
+        if (!learner.shouldReflect(prompt, answer, tools.size)) {
+            announceGrowth(null, levelBefore, conversationId)
+            return
+        }
+        learnJob = container.appScope.launch {
+            kotlinx.coroutines.delay(REFLECT_DELAY_MS)
+            _state.update { if (!it.running) it.copy(activity = "learning") else it }
+            val learned = try {
+                learner.reflect(prompt, answer, tools)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                container.workspace.log("W", "reflection skipped: ${e.message}")
+                null
+            } finally {
+                _state.update { if (!it.running && it.activity == "learning") it.copy(activity = null) else it }
+            }
+            announceGrowth(learned, levelBefore, conversationId)
+        }
+    }
+
+    private fun announceGrowth(learned: Learned?, levelBefore: Int, conversationId: Long) {
+        val g = container.learner.growth.value
+        val levelUp = g.level > levelBefore
+        if ((learned == null || learned.isEmpty) && !levelUp) return
+        val text = buildString {
+            if (levelUp) append("Level up! Now level ").append(g.level).append(" · ").append(g.title).append('.')
+            if (learned != null && !learned.isEmpty) {
+                if (isNotEmpty()) append(' ')
+                append("Learned ").append(learned.summary()).append('.')
+                learned.facts.forEach { append("\n• ").append(it) }
+                learned.lesson?.let { append("\n• Lesson: ").append(it) }
+            }
+        }
+        _state.update { s ->
+            if (s.conversationId != conversationId || s.running) s
+            else s.copy(
+                items = s.items + ChatItem(newId(), ItemRole.TOOL, text, toolName = "growth"),
+                activity = if (levelUp) "levelup" else s.activity
+            )
+        }
+        if (levelUp) {
+            container.appScope.launch {
+                kotlinx.coroutines.delay(LEVEL_UP_SHOW_MS)
+                _state.update { if (it.activity == "levelup") it.copy(activity = null) else it }
+            }
+        }
+    }
+
+    // endregion
 
     fun stop() {
         container.localEngine.abort()
@@ -246,6 +320,7 @@ class AgentSessionController(private val container: AppContainer) {
             }
             is AgentEvent.ToolCallStarted -> {
                 container.workspace.log("I", "tool ${event.name} ${event.argumentsJson.take(200)}")
+                synchronized(turnTools) { turnTools += event.name }
                 _state.update { s ->
                     val narration = s.items.firstOrNull { it.id == answerId }?.text.orEmpty().trim()
                     val terminal = s.terminal +
@@ -300,6 +375,17 @@ class AgentSessionController(private val container: AppContainer) {
     }
 
     private fun activityFor(tool: String, argumentsJson: String): String {
+        if (tool == "computer") {
+            val command = Regex("\"command\"\\s*:\\s*\"([^\"]*)").find(argumentsJson)?.groupValues?.get(1).orEmpty().trim()
+            return when {
+                argumentsJson.contains("\"write_path\"") && command.isEmpty() -> "computer:write"
+                command.startsWith("run") || command.startsWith("node") || command.startsWith("eval") -> "computer:run"
+                command.startsWith("rm") -> "computer:delete"
+                command.startsWith("cat") || command.startsWith("ls") || command.startsWith("tree") || command.startsWith("grep") -> "computer:read"
+                argumentsJson.contains("\"write_path\"") -> "computer:write"
+                else -> "computer"
+            }
+        }
         if (tool != "phone") return tool
         val action = Regex("\"action\"\\s*:\\s*\"([a-z_]+)\"").find(argumentsJson)?.groupValues?.get(1) ?: "phone"
         return "phone:$action"
@@ -328,5 +414,7 @@ class AgentSessionController(private val container: AppContainer) {
     companion object {
         private const val MAX_TERMINAL_LINES = 300
         private const val MAX_HISTORY = 40
+        private const val REFLECT_DELAY_MS = 1_500L
+        private const val LEVEL_UP_SHOW_MS = 4_000L
     }
 }

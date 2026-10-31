@@ -32,3 +32,11 @@
 # kotlinx.serialization
 -keepattributes *Annotation*, InnerClasses
 -dontnote kotlinx.serialization.**
+
+# Rhino (on-phone JavaScript sandbox) uses reflection for its built-in objects.
+-keep class org.mozilla.javascript.** { *; }
+-dontwarn org.mozilla.javascript.**
+-dontwarn javax.script.**
+-dontwarn java.beans.**
+-dontwarn javax.lang.model.**
+-dontwarn jdk.dynalink.**
