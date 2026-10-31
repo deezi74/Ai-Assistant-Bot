@@ -91,7 +91,7 @@ class AppContainer(val app: PocketAgentApp) {
     val database = AppDatabase.create(app)
     val workspace = Workspace(app)
     val localEngine = LocalGgufEngine(app)
-    val remoteEngine = RemoteApiEngine(settings, settings.current.remoteConfig, appTitle = "PocketAgent")
+    val remoteEngine = RemoteApiEngine(settings, settings.current.remoteConfig, appTitle = "TruAgent")
     val scheduler = ProviderScheduler(localEngine, remoteEngine, settings.current.preference)
     val downloads = ModelDownloadManager(app)
 

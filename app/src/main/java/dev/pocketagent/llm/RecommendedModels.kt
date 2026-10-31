@@ -5,7 +5,7 @@ import dev.pocketagent.core.llm.HfReference
 
 /**
  * Hand-picked GGUF builds (Q4_K_M) that run on phones with llama.cpp and follow
- * PocketAgent's tool-call format. Sizes are the exact file sizes on Hugging Face.
+ * TruAgent's tool-call format. Sizes are the exact file sizes on Hugging Face.
  */
 data class RecommendedModel(
     val id: String,
@@ -62,7 +62,7 @@ object RecommendedModels {
 
     fun byFile(fileName: String): RecommendedModel? = all.firstOrNull { it.file == fileName }
 
-    /** The model PocketAgent suggests for a phone with [totalRamBytes] of memory. */
+    /** The model TruAgent suggests for a phone with [totalRamBytes] of memory. */
     fun bestFor(totalRamBytes: Long): RecommendedModel {
         val gb = totalRamBytes / 1_000_000_000.0
         val id = when {

@@ -20,7 +20,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "PocketAgent"
+rootProject.name = "TruAgent"
 
 include(":agent-core")
 
@@ -41,5 +41,5 @@ val androidSdkPresent: Boolean = run {
 if (androidSdkPresent || providers.gradleProperty("pocketagent.forceAndroid").isPresent) {
     include(":app")
 } else {
-    logger.lifecycle("PocketAgent: no Android SDK found, building :agent-core only.")
+    logger.lifecycle("TruAgent: no Android SDK found, building :agent-core only.")
 }

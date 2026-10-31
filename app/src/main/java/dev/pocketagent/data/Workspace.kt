@@ -51,7 +51,7 @@ class Workspace(private val context: Context) {
                 "W" -> android.util.Log.WARN
                 else -> android.util.Log.INFO
             },
-            "PocketAgent", text
+            "TruAgent", text
         )
     }
 

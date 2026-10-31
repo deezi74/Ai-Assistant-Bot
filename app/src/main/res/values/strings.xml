@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">PocketAgent</string>
+    <string name="app_name">TruAgent</string>
     <string name="notif_channel_agent">Agent sessions</string>
     <string name="notif_channel_downloads">Model downloads</string>
     <string name="notif_agent_running">Agent is working</string>
     <string name="notif_download_title">Downloading model</string>
     <string name="action_stop">Stop</string>
     <string name="notif_channel_routines">Routines</string>
-    <string name="unlock_title">Unlock PocketAgent</string>
+    <string name="unlock_title">Unlock TruAgent</string>
     <string name="unlock_subtitle">Confirm it\'s you to open your chats</string>
 </resources>

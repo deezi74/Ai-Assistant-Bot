@@ -82,7 +82,7 @@ class PhoneTool(private val context: Context, private val enabled: () -> Boolean
                 }
                 "clipboard", "copy" -> {
                     val text = arguments.string("text") ?: return@withContext ToolResult.error("missing \"text\"")
-                    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("PocketAgent", text))
+                    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("TruAgent", text))
                     ToolResult("Copied ${text.length} characters to the clipboard.")
                 }
                 "battery" -> battery()
@@ -150,7 +150,7 @@ class PhoneTool(private val context: Context, private val enabled: () -> Boolean
         val percent = level?.coerceIn(0, 100) ?: return ToolResult.error("give a brightness level 0-100")
         if (!Settings.System.canWrite(context)) {
             start(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${context.packageName}")), "")
-            return ToolResult.error("PocketAgent needs \"Modify system settings\" to change brightness. I opened that screen; allow it and ask again.")
+            return ToolResult.error("TruAgent needs \"Modify system settings\" to change brightness. I opened that screen; allow it and ask again.")
         }
         val resolver = context.contentResolver
         Settings.System.putInt(resolver, Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL)
@@ -162,7 +162,7 @@ class PhoneTool(private val context: Context, private val enabled: () -> Boolean
         val nm = context.getSystemService(NotificationManager::class.java)
         if (!nm.isNotificationPolicyAccessGranted) {
             start(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS), "")
-            return ToolResult.error("PocketAgent needs Do Not Disturb access. I opened that screen; allow it and ask again.")
+            return ToolResult.error("TruAgent needs Do Not Disturb access. I opened that screen; allow it and ask again.")
         }
         val on = state.lowercase() !in setOf("off", "false", "0")
         nm.setInterruptionFilter(if (on) NotificationManager.INTERRUPTION_FILTER_PRIORITY else NotificationManager.INTERRUPTION_FILTER_ALL)

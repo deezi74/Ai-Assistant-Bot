@@ -1,4 +1,4 @@
-# PocketAgent
+# TruAgent
 
 An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls back to remote APIs (OpenAI-compatible, OpenRouter, Anthropic), and pulls **live web results** through DuckDuckGo or SearXNG. Kotlin + Jetpack Compose, dark UI, floating agent terminal that streams the model's thoughts, tool calls and observations.
 
@@ -26,7 +26,7 @@ Upgrading from 1.1.0 resets chat history once because the database layout change
 
 Every push to `main` builds a signed arm64-v8a APK in GitHub Actions and publishes it under **Releases** (tag `build-N`). On your phone:
 
-1. Open the repo's **Releases** page, download `PocketAgent-N-arm64.apk`.
+1. Open the repo's **Releases** page, download `TruAgent-N-arm64.apk`.
 2. Open it and allow *Install unknown apps* for your browser / file manager.
 3. In the app: **Settings → Download from Hugging Face**, keep the default `bartowski/Qwen2.5-1.5B-Instruct-GGUF`, tap *List files*, download the `Q4_K_M` file, then *Load* it. Or add an API key under *Remote endpoint*.
 
@@ -42,7 +42,7 @@ plus `POCKETAGENT_KEYSTORE_PASSWORD`, `POCKETAGENT_KEY_ALIAS`, `POCKETAGENT_KEY_
 
 ## Project layout
 ```
-PocketAgent/
+TruAgent/
 ├── settings.gradle.kts            # repos; :app is skipped automatically when no Android SDK exists
 ├── build.gradle.kts
 ├── gradle/libs.versions.toml      # AGP 8.7.3, Kotlin 2.1.0, Compose BOM 2024.12.01, Room 2.6.1, WorkManager 2.10

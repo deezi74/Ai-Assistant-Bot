@@ -215,7 +215,7 @@ fun PermissionsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
     }
     SubScreen("Permissions", onBack) {
-        Hint("PocketAgent asks for as little as possible. No contacts, location, microphone recording or accessibility access.")
+        Hint("TruAgent asks for as little as possible. No contacts, location, microphone recording or accessibility access.")
         PermissionCard("Notifications", "Routine results and long-running chats", notificationsOk) {
             if (Build.VERSION.SDK_INT >= 33) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
@@ -227,7 +227,7 @@ fun PermissionsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             )
         }
         PermissionCard("Internet", "Web search, providers, model downloads", true) {}
-        Hint("Voice input uses your phone's speech recognizer, so the microphone permission belongs to that app, not PocketAgent.")
+        Hint("Voice input uses your phone's speech recognizer, so the microphone permission belongs to that app, not TruAgent.")
         OutlinedButton(onClick = {
             startSafely(context, Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")))
         }) { Text("Open app info") }
@@ -280,7 +280,7 @@ fun StorageScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     LaunchedEffect(Unit) { viewModel.refreshStorage() }
     SubScreen("Storage", onBack) {
         SurfaceCard {
-            Text("Used by PocketAgent", style = MaterialTheme.typography.titleMedium)
+            Text("Used by TruAgent", style = MaterialTheme.typography.titleMedium)
             Text(
                 formatBytes(report.modelsBytes + report.artifactsBytes + report.mediaBytes + report.databaseBytes + report.personaBytes),
                 style = MaterialTheme.typography.headlineSmall,
@@ -312,7 +312,7 @@ private fun StorageLine(label: String, bytes: Long, action: String?, onAction: (
 fun SharedFoldersScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
     SubScreen("Shared folders", onBack) {
-        Hint("Where PocketAgent keeps files. Library and media live in app storage that a file manager or a computer over USB can reach.")
+        Hint("Where TruAgent keeps files. Library and media live in app storage that a file manager or a computer over USB can reach.")
         listOf(
             "Library artifacts" to viewModel.workspace.artifactsDir,
             "Media" to viewModel.workspace.mediaDir,
@@ -377,7 +377,7 @@ fun BackupScreen(viewModel: AppViewModel, onBack: () -> Unit, onRestartNeeded: (
     pendingRestore?.let { uri ->
         ConfirmDialog(
             "Restore this backup?",
-            "Current chats and files are replaced by the backup. PocketAgent restarts when it's done.",
+            "Current chats and files are replaced by the backup. TruAgent restarts when it's done.",
             "Restore",
             onConfirm = { viewModel.restoreBackup(uri, onRestartNeeded) },
             onDismiss = { pendingRestore = null }
@@ -550,7 +550,7 @@ fun AppLockScreen(viewModel: AppViewModel, onBack: () -> Unit) {
         ) == BiometricManager.BIOMETRIC_SUCCESS
     }
     SubScreen("App lock", onBack) {
-        Hint("Ask for your fingerprint, face or screen lock every time PocketAgent opens.")
+        Hint("Ask for your fingerprint, face or screen lock every time TruAgent opens.")
         SwitchRow("Require unlock", if (available) null else "Set up a screen lock on this phone first", settings.appLock && available) { c ->
             if (available) viewModel.updateSettings { it.copy(appLock = c) } else viewModel.toast("No screen lock or biometrics set up")
         }
@@ -563,21 +563,21 @@ fun DefaultAssistantScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     SubScreen("Set as default assistant", onBack) {
         Hint("Make ${settings.assistantName} open when you use your phone's assistant gesture (long-press home or swipe from a bottom corner).")
-        Hint("1. Tap the button below.\n2. Choose Digital assistant app (sometimes under Default apps ▸ Assist).\n3. Pick PocketAgent.")
+        Hint("1. Tap the button below.\n2. Choose Digital assistant app (sometimes under Default apps ▸ Assist).\n3. Pick TruAgent.")
         Button(onClick = {
             startSafely(context, Intent(Settings.ACTION_VOICE_INPUT_SETTINGS), Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS))
         }, colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)) { Text("Open assistant settings") }
         OutlinedButton(onClick = { startSafely(context, Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)) }) { Text("Open default apps") }
-        Hint("You can also share text or a picture from any app to PocketAgent.")
+        Hint("You can also share text or a picture from any app to TruAgent.")
     }
 }
 
 @Composable
 fun AboutScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     val context = LocalContext.current
-    SubScreen("About PocketAgent", onBack) {
+    SubScreen("About TruAgent", onBack) {
         SurfaceCard {
-            Text("PocketAgent ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleLarge)
+            Text("TruAgent ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.titleLarge)
             Hint("A personal AI agent that runs GGUF models on your phone with llama.cpp, or uses a cloud provider you choose. It searches the web, writes your feed, tracks goals, runs routines and keeps a Library.")
         }
         Hint("Built with Kotlin, Jetpack Compose, Room, WorkManager, OkHttp and llama.cpp (MIT).")
@@ -591,13 +591,13 @@ fun AboutScreen(viewModel: AppViewModel, onBack: () -> Unit) {
 fun PrivacyScreen(onBack: () -> Unit) {
     SubScreen("Privacy policy", onBack) {
         listOf(
-            "What stays on your phone" to "Chats, feed, goals, routines, Library files, media, memory, skills, your avatar and settings are stored only in PocketAgent's private storage on this device. There is no PocketAgent account or server.",
+            "What stays on your phone" to "Chats, feed, goals, routines, Library files, media, memory, skills, your avatar and settings are stored only in TruAgent's private storage on this device. There is no TruAgent account or server.",
             "On-device models" to "When an on-device model answers, your messages never leave the phone.",
             "Cloud providers" to "If you add a provider key and routing uses it, the messages of that conversation (plus the system prompt with your assistant's name, memory, skills and open goals) are sent to that provider under its own privacy terms.",
             "Web search and pages" to "Search queries go to DuckDuckGo or the SearXNG server you set. Pages the assistant reads are fetched directly from their websites.",
             "Model downloads" to "Downloads come straight from Hugging Face. Your Hugging Face token, if any, is sent only to Hugging Face.",
             "Keys and secrets" to "API keys, tokens and environment variables are encrypted with a key held in the Android Keystore and are never part of backups.",
-            "Analytics" to "PocketAgent has no analytics, ads or tracking.",
+            "Analytics" to "TruAgent has no analytics, ads or tracking.",
             "Deleting data" to "Settings ▸ Data controls removes chats, feed and memory. Uninstalling the app removes everything."
         ).forEach { (title, body) ->
             Text(title, style = MaterialTheme.typography.titleMedium)
@@ -607,7 +607,7 @@ fun PrivacyScreen(onBack: () -> Unit) {
 }
 
 private fun copy(context: Context, text: String) {
-    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("PocketAgent", text))
+    context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("TruAgent", text))
 }
 
 @Composable

@@ -78,7 +78,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Lets the user pick PocketAgent as the default digital assistant (long-press home / assist gesture) -->
+            <!-- Lets the user pick TruAgent as the default digital assistant (long-press home / assist gesture) -->
             <intent-filter>
                 <action android:name="android.intent.action.ASSIST" />
                 <category android:name="android.intent.category.DEFAULT" />

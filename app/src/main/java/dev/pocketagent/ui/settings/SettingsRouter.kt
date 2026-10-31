@@ -141,7 +141,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Shield, "Permissions", "Notifications, battery", onClick = { go("permissions") })
         SettingRow(Icons.Filled.BatteryChargingFull, "Background & notifications", "Keep working while the screen is off", onClick = { go("background") })
         SettingRow(Icons.Filled.Storage, "Storage", "Models, Library, chats", onClick = { go("storage") })
-        SettingRow(Icons.Filled.Folder, "Shared folders", "Where PocketAgent keeps files", onClick = { go("shared") })
+        SettingRow(Icons.Filled.Folder, "Shared folders", "Where TruAgent keeps files", onClick = { go("shared") })
         SettingRow(Icons.Filled.FolderShared, "Mount external folders", if (mounts.isEmpty()) "None mounted" else "${mounts.size} mounted", onClick = { go("mounts") })
         SettingRow(Icons.Filled.Backup, "Backup & restore", "Export everything except keys", onClick = { go("backup") })
 
@@ -154,7 +154,7 @@ private fun SettingsHome(viewModel: AppViewModel) {
         SettingRow(Icons.Filled.Apps, "Set as default assistant", "Open with the assist gesture", onClick = { go("assistant") })
 
         SectionTitle("About")
-        SettingRow(Icons.Filled.Info, "About PocketAgent", onClick = { go("about") })
+        SettingRow(Icons.Filled.Info, "About TruAgent", onClick = { go("about") })
         SettingRow(Icons.Filled.Policy, "Privacy policy", onClick = { go("privacy") })
         SettingRow(Icons.AutoMirrored.Filled.Help, "Send feedback", "Opens GitHub issues", onClick = { openUrl(context, FEEDBACK_URL) })
         SettingRow(Icons.Filled.Tag, "Version", "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")

@@ -34,7 +34,7 @@ class AgentForegroundService : Service() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), type)
         if (wakeLock == null) {
             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "PocketAgent:agent").apply {
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "TruAgent:agent").apply {
                 setReferenceCounted(false)
                 acquire(WAKE_LOCK_TIMEOUT_MS)
             }

@@ -57,7 +57,7 @@ class RemoteApiEngine(
     initialConfig: RemoteEndpointConfig = RemoteEndpointConfig(),
     httpClient: OkHttpClient? = null,
     private val appReferer: String = "https://github.com/pocketagent",
-    private val appTitle: String = "PocketAgent"
+    private val appTitle: String = "TruAgent"
 ) : LLMProvider {
 
     @Volatile

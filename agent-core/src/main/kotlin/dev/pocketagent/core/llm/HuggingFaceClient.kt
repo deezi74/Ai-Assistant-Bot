@@ -115,7 +115,7 @@ class HuggingFaceClient(
         destination.parentFile?.mkdirs()
         val part = File(destination.parentFile, destination.name + ".part")
         val existing = if (part.exists()) part.length() else 0L
-        val builder = Request.Builder().url(url).get().header("User-Agent", "PocketAgent/1.0")
+        val builder = Request.Builder().url(url).get().header("User-Agent", "TruAgent/1.0")
         if (!token.isNullOrBlank()) builder.header("Authorization", "Bearer $token")
         if (existing > 0) builder.header("Range", "bytes=$existing-")
         client.newCall(builder.build()).execute().use { resp ->

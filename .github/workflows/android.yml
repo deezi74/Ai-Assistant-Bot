@@ -83,14 +83,14 @@ jobs:
         id: apk
         run: |
           APK=$(ls app/build/outputs/apk/release/*.apk | head -n1)
-          OUT="PocketAgent-${GITHUB_RUN_NUMBER}-arm64.apk"
+          OUT="TruAgent-${GITHUB_RUN_NUMBER}-arm64.apk"
           cp "$APK" "$OUT"
           sha256sum "$OUT" > "$OUT.sha256"
           echo "file=$OUT" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: PocketAgent-apk
+          name: TruAgent-apk
           path: |
             ${{ steps.apk.outputs.file }}
             ${{ steps.apk.outputs.file }}.sha256
@@ -100,7 +100,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || format('build-{0}', github.run_number) }}
-          name: PocketAgent build ${{ github.run_number }}
+          name: TruAgent build ${{ github.run_number }}
           body: |
             Installable arm64-v8a APK built from ${{ github.sha }}.
             Download the .apk on your phone and open it (allow "Install unknown apps" for your browser or file manager).
