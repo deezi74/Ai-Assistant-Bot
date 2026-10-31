@@ -630,6 +630,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** "Connected as …" or an error, after saving or testing the GitHub token. */
     val githubStatus: StateFlow<String?> = _github.asStateFlow()
     val hasGithubToken: Boolean get() = container.github.hasToken()
+    val builtApps: Set<String> get() = container.settings.builtApps
 
     fun saveGithubToken(token: String?) {
         container.settings.githubToken = token?.trim()

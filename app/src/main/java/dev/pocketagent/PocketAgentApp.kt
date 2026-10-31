@@ -14,6 +14,7 @@ import dev.pocketagent.agent.EmailClient
 import dev.pocketagent.agent.EmailTool
 import dev.pocketagent.core.tools.GitHubClient
 import dev.pocketagent.core.tools.GitHubTool
+import dev.pocketagent.core.tools.AppBuilderTool
 import dev.pocketagent.core.tools.GoogleApi
 import dev.pocketagent.core.tools.GoogleCalendarTool
 import dev.pocketagent.core.tools.GoogleDriveTool
@@ -148,6 +149,10 @@ class AppContainer(val app: PocketAgentApp) {
             OnlineOnlyTool(WeatherTool(places, location::current, imperial), offline),
             OnlineOnlyTool(EmailTool(email) { settings.current.emailCanOrganize }, offline),
             OnlineOnlyTool(GitHubTool(github) { settings.current.githubCanWrite }, offline),
+            OnlineOnlyTool(
+                AppBuilderTool(github, { settings.builtApps }, { settings.builtApps = settings.builtApps + it }) { settings.current.appBuilder },
+                offline
+            ),
             OnlineOnlyTool(GoogleCalendarTool(google, { settings.current.calendarCanWrite }), offline),
             OnlineOnlyTool(GoogleDriveTool(google), offline),
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),

@@ -60,6 +60,8 @@ data class AppSettings(
     val githubCanWrite: Boolean = false,
     /** Lets the calendar tool add events to Google Calendar. */
     val calendarCanWrite: Boolean = false,
+    /** Lets the agent create private repos in the user's GitHub and build APKs there. */
+    val appBuilder: Boolean = true,
     /** What the AI-generated character looks like; shared with the model so it can stay in character. */
     val characterDescription: String = "",
     /** "free", "openai" or "openrouter": where AI characters are drawn. */
@@ -155,6 +157,7 @@ class SecureSettings(context: Context) : CredentialStore {
             emailCanOrganize = prefs.getBoolean("email_can_organize", d.emailCanOrganize),
             githubCanWrite = prefs.getBoolean("github_can_write", d.githubCanWrite),
             calendarCanWrite = prefs.getBoolean("calendar_can_write", d.calendarCanWrite),
+            appBuilder = prefs.getBoolean("app_builder", d.appBuilder),
             characterDescription = prefs.getString("character_description", null) ?: d.characterDescription,
             imageSource = prefs.getString("image_source", null) ?: d.imageSource,
             fontScale = prefs.getFloat("font_scale", d.fontScale),
@@ -202,6 +205,7 @@ class SecureSettings(context: Context) : CredentialStore {
             .putBoolean("email_can_organize", next.emailCanOrganize)
             .putBoolean("github_can_write", next.githubCanWrite)
             .putBoolean("calendar_can_write", next.calendarCanWrite)
+            .putBoolean("app_builder", next.appBuilder)
             .putString("character_description", next.characterDescription)
             .putString("image_source", next.imageSource)
             .putFloat("font_scale", next.fontScale)
@@ -251,6 +255,11 @@ class SecureSettings(context: Context) : CredentialStore {
     var githubClientId: String
         get() = prefs.getString("github_client_id", null)?.takeIf { it.isNotBlank() } ?: dev.pocketagent.BuildConfig.GITHUB_CLIENT_ID
         set(value) = prefs.edit().putString("github_client_id", value.trim()).apply()
+
+    /** Repos the app builder created ("owner/name"); it only ever writes to these. */
+    var builtApps: Set<String>
+        get() = prefs.getString("built_apps", null).orEmpty().split('\n').map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        set(value) = prefs.edit().putString("built_apps", value.joinToString("\n")).apply()
 
     /** Google accounts signed in with "Sign in with Google" (addresses only; tokens stay with Play services). */
     var googleAccounts: List<String>

@@ -50,8 +50,8 @@ class PersonaManager(
      * Ordered from most to least stable so the on-device model can reuse its KV
      * cache: soul, mode rules and tools rarely change; [extraContext] (name,
      * memory, skills, goals) changes when the assistant learns something; the
-     * date changes once a day. The clock time goes into the user turn instead
-     * (see [timeNote]) so it never invalidates the cached system prompt.
+     * date changes once a day. The clock time is not in the prompt at all (small
+     * models kept reading it out); the model asks the current_time tool instead.
      */
     fun buildSystemPrompt(mode: AgentMode, toolManifest: String, extraContext: String = ""): String = buildString {
         append(readSoul().trim())
@@ -69,11 +69,10 @@ class PersonaManager(
         if (extraContext.isNotBlank()) append('\n').append(extraContext.trim()).append('\n')
         append("\n## Context\n")
         append("- Today: ").append(clock().format(DateTimeFormatter.ofPattern("EEEE yyyy-MM-dd zzz"))).append('\n')
+        append("- Don't mention the date or time unless the user asks for it or the task needs it. For the exact time, use the current_time tool.\n")
         if (deviceDescription.isNotBlank()) append("- Device: ").append(deviceDescription).append('\n')
     }
 
-    /** Short clock note prepended to the newest user message. */
-    fun timeNote(): String = "[Local time ${clock().format(DateTimeFormatter.ofPattern("HH:mm"))}]"
 
     companion object {
         const val SOUL_FILE = "soul.md"

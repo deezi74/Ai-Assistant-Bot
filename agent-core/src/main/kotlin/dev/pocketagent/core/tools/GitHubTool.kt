@@ -46,6 +46,21 @@ class GitHubClient(
 
     suspend fun post(path: String, body: JsonObject): JsonElement = call("POST", path, emptyMap(), body)
 
+    suspend fun patch(path: String, body: JsonObject): JsonElement = call("PATCH", path, emptyMap(), body)
+
+    /** Plain-text GET that follows redirects (used for Actions job logs). */
+    suspend fun getText(path: String): String = withContext(Dispatchers.IO) {
+        val key = token()?.trim().takeUnless { it.isNullOrEmpty() } ?: throw GitHubException(NO_TOKEN)
+        val request = Request.Builder().url(base.trimEnd('/') + path)
+            .header("Authorization", "Bearer $key")
+            .header("User-Agent", "TruAgent")
+            .build()
+        http.newCall(request).execute().use { r ->
+            if (!r.isSuccessful) throw GitHubException("GitHub error ${r.code} reading $path")
+            r.body?.string().orEmpty()
+        }
+    }
+
     private suspend fun call(method: String, path: String, query: Map<String, String>, body: JsonObject?): JsonElement =
         withContext(Dispatchers.IO) {
             val key = token()?.trim().takeUnless { it.isNullOrEmpty() } ?: throw GitHubException(NO_TOKEN)
@@ -336,6 +351,6 @@ class GitHubDeviceFlow(
     }
 
     companion object {
-        const val SCOPE = "repo read:user notifications"
+        const val SCOPE = "repo workflow read:user notifications"
     }
 }

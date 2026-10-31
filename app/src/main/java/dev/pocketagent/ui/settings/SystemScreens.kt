@@ -472,6 +472,15 @@ fun GitHubConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             ) { Text("Save & test") }
         }
 
+        SectionTitle("Build apps for me")
+        SwitchRow(
+            "Let it build Android apps",
+            "Ask for an app and it writes the code, makes a new private repo in your GitHub, and GitHub Actions builds the APK. It only changes repos it created.",
+            settings.appBuilder
+        ) { c -> viewModel.updateSettings { it.copy(appBuilder = c) } }
+        if (viewModel.builtApps.isNotEmpty()) Hint("Apps built so far: " + viewModel.builtApps.joinToString())
+        Hint("Building needs repo and workflow access. Sign in again with GitHub if you signed in before 1.8, or give a classic token the repo and workflow scopes. Private repos get 2,000 free build minutes a month, which is roughly 300 builds.")
+
         SectionTitle("Permissions")
         SwitchRow(
             "Let it open issues and comment",

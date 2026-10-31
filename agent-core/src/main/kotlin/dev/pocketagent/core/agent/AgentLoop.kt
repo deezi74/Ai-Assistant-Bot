@@ -65,7 +65,7 @@ class AgentLoop(
         val messages = ArrayList<ChatMessage>()
         messages += ChatMessage(ChatRole.SYSTEM, persona.buildSystemPrompt(mode, tools.manifest(mode), extraContext))
         messages += history.filter { it.role != ChatRole.SYSTEM }
-        messages += ChatMessage(ChatRole.USER, persona.timeNote() + " " + userMessage, userImageJpegBase64)
+        messages += ChatMessage(ChatRole.USER, userMessage, userImageJpegBase64)
 
         for (step in 1..config.maxSteps) {
             val lastStep = step == config.maxSteps
