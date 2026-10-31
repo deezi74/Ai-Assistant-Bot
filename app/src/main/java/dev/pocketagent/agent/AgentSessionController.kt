@@ -151,7 +151,17 @@ class AgentSessionController(private val container: AppContainer) {
     var turnImage: File? = null
         private set
 
-    fun send(text: String, mode: AgentMode, imageFile: File? = null) {
+    /**
+     * A bigger job, Manus-style: its own chat, a plan first, up to [TASK_STEPS]
+     * tool steps, finished work saved as files, and a notification at the end.
+     */
+    suspend fun startTask(text: String, mode: AgentMode, imageFile: File? = null) {
+        if (text.isBlank() || _state.value.running) return
+        newSideChat("Task: " + titleFor(text.trim()))
+        send(text, mode, imageFile, task = true)
+    }
+
+    fun send(text: String, mode: AgentMode, imageFile: File? = null, task: Boolean = false) {
         val prompt = text.trim().ifEmpty { if (imageFile != null) "What's in this image?" else "" }
         if (prompt.isEmpty() || _state.value.running) return
         turnImage = imageFile
@@ -178,7 +188,7 @@ class AgentSessionController(private val container: AppContainer) {
             )
         }
 
-        if (container.settings.current.keepAwake) startForegroundService()
+        if (task || container.settings.current.keepAwake) startForegroundService()
         job = container.appScope.launch {
             val conversationId = _state.value.conversationId ?: mainConversationId().also { id ->
                 _state.update { it.copy(conversationId = id) }
@@ -191,8 +201,8 @@ class AgentSessionController(private val container: AppContainer) {
 
             var answer = ""
             try {
-                container.runner.newLoop()
-                    .run(history, prompt, mode, container.runner.extraContext(mode), image)
+                val loop = if (task) container.runner.newLoop(maxSteps = TASK_STEPS) else container.runner.newLoop()
+                loop.run(history, if (task) TASK_BRIEF + prompt else prompt, mode, container.runner.extraContext(mode), image)
                     .collect { event -> handle(event, answerId, conversationId) { answer = it } }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 container.workspace.log("W", "chat stopped by user")
@@ -223,6 +233,7 @@ class AgentSessionController(private val container: AppContainer) {
                     )
                 }
                 stopForegroundService()
+                if (task) notifyTaskDone(prompt, answer.ifBlank { finalText })
                 if (answer.isNotBlank()) afterTask(prompt, answer, conversationId)
             }
         }
@@ -447,6 +458,27 @@ class AgentSessionController(private val container: AppContainer) {
 
     private fun titleFor(prompt: String) = prompt.lineSequence().first().take(48)
 
+    private fun notifyTaskDone(prompt: String, answer: String) {
+        val ctx = container.app
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+        val open = android.app.PendingIntent.getActivity(
+            ctx, 9, android.content.Intent(ctx, dev.pocketagent.MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val body = answer.ifBlank { "Finished." }.take(400)
+        val n = androidx.core.app.NotificationCompat.Builder(ctx, dev.pocketagent.PocketAgentApp.CHANNEL_AGENT)
+            .setSmallIcon(dev.pocketagent.R.drawable.ic_notification)
+            .setContentTitle("Task done: " + titleFor(prompt))
+            .setContentText(body)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        androidx.core.app.NotificationManagerCompat.from(ctx).notify(prompt.hashCode(), n)
+    }
+
     private fun now() = System.currentTimeMillis()
 
     private fun startForegroundService() {
@@ -464,6 +496,13 @@ class AgentSessionController(private val container: AppContainer) {
     }
 
     companion object {
+        const val TASK_STEPS = 30
+        const val TASK_BRIEF =
+            "[Agent task] Work on this on your own until it is done. First write a short numbered plan (3 to 7 steps). " +
+                "Then do the steps one by one with your tools, saying briefly which step you're on. Look things up instead of guessing. " +
+                "Save the finished deliverable with save_artifact (markdown report, html page, csv table, code, whatever fits). " +
+                "End with a short summary and the file name. Ask the user only if you truly can't continue.\n\nTask: "
+
         private const val MAX_TERMINAL_LINES = 300
         private const val MAX_HISTORY = 40
         private const val REFLECT_DELAY_MS = 1_500L

@@ -132,6 +132,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stop() = container.session.stop()
 
+    fun startTask(text: String) {
+        val image = _pendingImage.value
+        _pendingImage.value = null
+        viewModelScope.launch { container.session.startTask(text, settings.value.mode, image) }
+    }
+
     /** The app left the screen: a good moment for deferred on-phone learning. */
     fun onAppBackground() = container.session.flushLearning()
     fun clearTerminal() = container.session.clearTerminal()
@@ -229,14 +235,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _feedError = MutableStateFlow<String?>(null)
     val feedError: StateFlow<String?> = _feedError.asStateFlow()
 
-    fun refreshFeed() {
+    fun refreshFeed() = refreshFeed(trending = false)
+
+    fun refreshFeed(trending: Boolean) {
         if (_feedBusy.value) return
         _feedBusy.value = true
         _feedError.value = null
         viewModelScope.launch {
             try {
                 container.ensureModelLoaded()
-                container.feed.generate()
+                container.feed.generate(trending = trending)
             } catch (e: Exception) {
                 _feedError.value = e.message ?: "Feed failed"
             } finally {

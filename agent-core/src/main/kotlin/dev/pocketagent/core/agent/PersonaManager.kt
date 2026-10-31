@@ -100,7 +100,7 @@ class PersonaManager(
         """.trimIndent()
 
         val WIT_RULES = """
-            Conversation mode. Talk, think, look things up. Use web_search for anything that could have changed since your training, then fetch_page when a snippet is not enough. Keep answers tight; use bullet points only when they genuinely help.
+            Conversation mode. Talk, think, look things up. Use web_search for anything that could have changed since your training, then fetch_page when a snippet is not enough. When you used the web, end with one to three source links. Keep answers tight; use bullet points only when they genuinely help.
         """.trimIndent()
 
         val RESEARCH_RULES = """

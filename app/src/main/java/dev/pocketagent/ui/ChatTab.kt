@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.FilledIconButton
@@ -109,6 +110,7 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
 
     var input by rememberSaveable { mutableStateOf("") }
     var voiceOpen by rememberSaveable { mutableStateOf(false) }
+    var taskMode by rememberSaveable { mutableStateOf(false) }
     var attachMenu by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val speaker = remember { Speaker(context) }
@@ -207,12 +209,31 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                 }
             }
             pending?.let { file -> PendingAttachment(file, onRemove = viewModel::clearPendingImage) }
+            if (taskMode) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Filled.Bolt, null, tint = accent, modifier = Modifier.size(18.dp))
+                    Text(
+                        " Agent task: it plans, works through the steps on its own and saves the result as a file.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Palette.TextMuted,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { taskMode = false }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Filled.Close, "Cancel task mode", tint = Palette.TextMuted, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
             Composer(
                 value = input,
                 onValueChange = { input = it },
                 running = chat.running,
                 accent = accent,
-                placeholder = "Message ${settings.assistantName}",
+                placeholder = if (taskMode) "Describe the task" else "Message ${settings.assistantName}",
                 canSend = input.isNotBlank() || pending != null,
                 onAttach = { attachMenu = true },
                 attachMenu = {
@@ -242,6 +263,14 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                             }
                         )
                         androidx.compose.material3.DropdownMenuItem(
+                            text = { Text("Agent task") },
+                            leadingIcon = { Icon(Icons.Filled.Bolt, null) },
+                            onClick = {
+                                attachMenu = false
+                                taskMode = true
+                            }
+                        )
+                        androidx.compose.material3.DropdownMenuItem(
                             text = { Text("Imagine an image") },
                             leadingIcon = { Icon(Icons.Filled.AutoAwesome, null) },
                             onClick = {
@@ -263,8 +292,9 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                     }
                 },
                 onSend = {
-                    viewModel.send(input)
+                    if (taskMode) viewModel.startTask(input) else viewModel.send(input)
                     input = ""
+                    taskMode = false
                 },
                 onStop = viewModel::stop
             )

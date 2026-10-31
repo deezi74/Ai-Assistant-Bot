@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 class FeedGenerator(private val container: AppContainer) {
     private val json = Json { isLenient = true; ignoreUnknownKeys = true }
 
-    suspend fun generate(count: Int = 5): Int {
+    suspend fun generate(count: Int = 5, trending: Boolean = false): Int {
         val s = container.settings.current
         val rated = container.database.content().ratedPosts()
         val liked = rated.filter { it.reaction > 0 }.joinToString("; ") { it.title }
@@ -26,7 +26,12 @@ class FeedGenerator(private val container: AppContainer) {
 
         val prompt = buildString {
             append("Write my feed. It is ").append(now).append(".\n")
-            append("My instruction for the feed: \"").append(s.feedSteer).append("\"\n")
+            if (trending) {
+                append("Make it a \"trending now\" edition: the biggest news and what people are talking about online today, ")
+                append("mixed with anything trending that fits my interests (\"").append(s.feedSteer).append("\"). Search the web first; every post needs a source url.\n")
+            } else {
+                append("My instruction for the feed: \"").append(s.feedSteer).append("\"\n")
+            }
             if (liked.isNotEmpty()) append("Posts I liked before: ").append(liked).append('\n')
             if (disliked.isNotEmpty()) append("Posts I disliked (avoid similar): ").append(disliked).append('\n')
             append("Use what you know about me from memory and my goals. ")

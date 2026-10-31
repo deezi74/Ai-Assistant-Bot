@@ -70,7 +70,8 @@ fun FeedTab(viewModel: AppViewModel) {
                     Text("Your feed", style = MaterialTheme.typography.titleLarge)
                     Text("Written by ${settings.assistantName} from what you care about", style = MaterialTheme.typography.bodySmall, color = Palette.TextMuted)
                 }
-                IconButton(onClick = viewModel::refreshFeed, enabled = !busy) {
+                TextButton(onClick = { viewModel.refreshFeed(trending = true) }, enabled = !busy) { Text("Trending") }
+                IconButton(onClick = { viewModel.refreshFeed() }, enabled = !busy) {
                     if (busy) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp) else Icon(Icons.Filled.Refresh, "Write new posts")
                 }
             }
@@ -110,7 +111,7 @@ fun FeedTab(viewModel: AppViewModel) {
                 SurfaceCard {
                     Text("Nothing here yet", style = MaterialTheme.typography.titleMedium)
                     Hint("Tap refresh and ${settings.assistantName} writes a few short posts. The \"Write the feed\" routine in Goals does it every morning.")
-                    Button(onClick = viewModel::refreshFeed, colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)) {
+                    Button(onClick = { viewModel.refreshFeed() }, colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)) {
                         Text("Write my feed")
                     }
                 }
