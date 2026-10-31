@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -129,6 +131,28 @@ fun ChatTab(viewModel: AppViewModel, showTerminal: Boolean, onHideTerminal: () -
                     status = modelLabel(local, chat.providerLabel),
                     onPick = { input = it },
                     modifier = Modifier.weight(1f),
+                    setup = {
+                        val needsModel = (local is LocalModelState.Idle || local is LocalModelState.Error) &&
+                            !viewModel.hasToken(settings.remoteKind)
+                        if (needsModel) {
+                            Text(
+                                "Get ${settings.assistantName} a brain: download the model that fits your phone.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Palette.TextMuted
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            dev.pocketagent.ui.settings.RecommendedModelCard(viewModel, viewModel.bestModel, highlight = true)
+                            Text(
+                                "More models",
+                                color = Palette.Accent,
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier
+                                    .clickable { viewModel.push("models") }
+                                    .padding(10.dp)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+                    },
                     avatar = {
                         AssistantAvatar(
                             settings.avatarKind, settings.avatarValue, settings.assistantName,
@@ -189,11 +213,19 @@ fun modelLabel(local: LocalModelState, provider: String): String = when {
 }
 
 @Composable
-private fun EmptyChat(name: String, status: String, onPick: (String) -> Unit, modifier: Modifier, avatar: @Composable () -> Unit) {
+private fun EmptyChat(
+    name: String,
+    status: String,
+    onPick: (String) -> Unit,
+    modifier: Modifier,
+    setup: @Composable () -> Unit,
+    avatar: @Composable () -> Unit
+) {
     Column(
         modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
@@ -203,6 +235,7 @@ private fun EmptyChat(name: String, status: String, onPick: (String) -> Unit, mo
         Spacer(Modifier.height(4.dp))
         Text(status, style = MaterialTheme.typography.labelSmall, color = Palette.TextMuted)
         Spacer(Modifier.height(24.dp))
+        setup()
         starterPrompts.forEach { p ->
             Text(
                 text = p,

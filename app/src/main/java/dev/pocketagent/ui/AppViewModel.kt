@@ -24,6 +24,8 @@ import dev.pocketagent.data.TokenUsageEntity
 import dev.pocketagent.llm.DownloadStatus
 import dev.pocketagent.llm.LocalModelFile
 import dev.pocketagent.llm.LocalModelState
+import dev.pocketagent.llm.RecommendedModel
+import dev.pocketagent.llm.RecommendedModels
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -411,15 +413,52 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _importProgress = MutableStateFlow<Float?>(null)
     val importProgress: StateFlow<Float?> = _importProgress.asStateFlow()
 
+    // region Recommended models
+
+    /** Total RAM of this phone, used to suggest a model that fits. */
+    val totalRamBytes: Long = container.localEngine.memoryReport().totalBytes
+    val bestModel: RecommendedModel = RecommendedModels.bestFor(totalRamBytes)
+    private val autoLoaded = mutableSetOf<String>()
+
+    fun downloadRecommended(model: RecommendedModel) {
+        val wifiOnly = settings.value.wifiOnlyDownloads
+        container.downloads.enqueue(model.reference, model.hfFile, wifiOnly)
+        toast("Downloading ${model.name} (${formatBytes(model.sizeBytes)})" + if (wifiOnly) ", waits for Wi-Fi" else ". It loads automatically when done.")
+    }
+
+    fun loadRecommended(model: RecommendedModel) {
+        val file = File(container.downloads.modelsDir, model.file)
+        if (file.isFile) loadModel(LocalModelFile(file)) else downloadRecommended(model)
+    }
+
+    fun isDownloaded(model: RecommendedModel): Boolean =
+        localModels.value.any { it.name == model.file && it.sizeBytes >= model.sizeBytes * 99 / 100 }
+
+    /** Loads a just-downloaded recommended model when nothing is loaded yet, so the agent can answer right away. */
+    private fun autoLoadIfRecommended(fileName: String) {
+        if (RecommendedModels.byFile(fileName) == null || !autoLoaded.add(fileName)) return
+        val state = container.localEngine.state.value
+        if (state is LocalModelState.Ready || state is LocalModelState.Loading) return
+        val file = File(container.downloads.modelsDir, fileName)
+        if (!file.isFile) return
+        loadModel(LocalModelFile(file))
+        toast("${RecommendedModels.byFile(fileName)?.name} is ready")
+    }
+
+    // endregion
+
     init {
         refreshLocalModels()
         refreshSkills()
         viewModelScope.launch {
             downloads.collect { list ->
-                if (list.any { it.state == androidx.work.WorkInfo.State.SUCCEEDED }) refreshLocalModels()
+                val finished = list.filter { it.state == androidx.work.WorkInfo.State.SUCCEEDED }
+                if (finished.isNotEmpty()) refreshLocalModels()
+                finished.forEach { d -> autoLoadIfRecommended(d.fileName) }
             }
         }
     }
+
 
     fun selectRemoteKind(kind: RemoteKind) = container.settings.update {
         it.copy(remoteKind = kind, remoteBaseUrl = kind.defaultBaseUrl, remoteModel = kind.defaultModel)

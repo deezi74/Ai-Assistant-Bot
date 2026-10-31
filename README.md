@@ -16,6 +16,7 @@ An Android AI agent that runs GGUF models **on the phone** via llama.cpp, falls 
 - **Library**: artifacts the assistant saves with `save_artifact`, your own notes, and media. Share or delete any file.
 - **Settings**: Models, Manage providers, Token usage, Soul, Memory, Skills, System files, Connectors, Environment variables (`$NAME` in tool arguments), Permissions, Background & notifications, Storage, Shared folders, Mount external folders (read-only `shared_files` tool), Backup & restore (zip without secrets), Appearance (accent, pure black, text size), Data controls, Network (offline mode, Wi-Fi-only downloads), Logs, App lock, Set as default assistant, About, Privacy policy.
 - **Phone controls** (`phone` tool): flashlight, volume, brightness, Do Not Disturb, alarms and timers, opening apps by name, settings panels, media keys, battery, clipboard, maps/links, and call/SMS drafts the user confirms. Toggle and one-time permissions in Settings ▸ Phone controls.
+- **Recommended models**: one-tap downloads of tested GGUF builds (Qwen3 0.6B/1.7B/4B/8B, Qwen2.5 3B, Gemma 3 1B/4B) with a pick based on the phone's RAM; the download loads itself when done. Also offered on the empty chat screen.
 - **Appearance**: accent, six backgrounds including a light one, and eight text colours.
 - Computers and Coding agents are listed but not available in this build.
 

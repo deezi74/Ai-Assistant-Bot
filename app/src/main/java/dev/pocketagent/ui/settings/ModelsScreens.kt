@@ -41,6 +41,14 @@ import dev.pocketagent.core.llm.ProviderPreference
 import dev.pocketagent.core.llm.RemoteKind
 import dev.pocketagent.core.tools.SearchBackend
 import dev.pocketagent.llm.LocalModelState
+import dev.pocketagent.llm.RecommendedModel
+import dev.pocketagent.llm.RecommendedModels
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
 import dev.pocketagent.ui.AppTextField
 import dev.pocketagent.ui.AppViewModel
 import dev.pocketagent.ui.Hint
@@ -75,6 +83,12 @@ fun ModelsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
     SubScreen("Models", onBack, actions = {
         IconButton(onClick = viewModel::refreshLocalModels) { Icon(Icons.Filled.Refresh, "Rescan") }
     }) {
+        SectionTitle("Recommended for this phone")
+        Hint("Your phone has ${formatBytes(viewModel.totalRamBytes)} of RAM. These models are tested with ${settings.assistantName}'s tools; one tap downloads and loads it.")
+        RecommendedModels.all.sortedByDescending { it.id == viewModel.bestModel.id }.forEach { m ->
+            RecommendedModelCard(viewModel, m, highlight = m.id == viewModel.bestModel.id)
+        }
+
         SectionTitle("Routing")
         Hint("Which brain answers. \"First\" options fall back to the other one when the first is unavailable.")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -262,4 +276,57 @@ fun SearchSection(viewModel: AppViewModel) {
         TextButton(onClick = { viewModel.updateSettings { it.copy(searxngUrl = searx.trim()) } }) { Text("Save URL") }
     }
     SwitchRow("Safe search", checked = settings.safeSearch) { c -> viewModel.updateSettings { it.copy(safeSearch = c) } }
+}
+
+/** One-tap download/load card for a curated model. */
+@Composable
+fun RecommendedModelCard(viewModel: AppViewModel, model: RecommendedModel, highlight: Boolean) {
+    val state by viewModel.localState.collectAsStateWithLifecycle()
+    val downloads by viewModel.downloads.collectAsStateWithLifecycle()
+    viewModel.localModels.collectAsStateWithLifecycle().value
+    val download = downloads.firstOrNull { it.fileName == model.file && it.isActive }
+    val loaded = (state as? LocalModelState.Ready)?.fileName == model.file
+    val loading = (state as? LocalModelState.Loading)?.fileName == model.file
+    val downloaded = viewModel.isDownloaded(model)
+    val fits = RecommendedModels.fits(model, viewModel.totalRamBytes)
+
+    SurfaceCard(modifier = if (highlight) Modifier.border(1.dp, Palette.Accent, RoundedCornerShape(18.dp)) else Modifier) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(model.name, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "${model.tag} · ${formatBytes(model.sizeBytes)} · ${model.minRamGb} GB+ RAM",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (highlight) Palette.Accent else Palette.TextMuted
+                )
+            }
+            if (highlight) Text("Best for your phone", style = MaterialTheme.typography.labelSmall, color = Palette.Accent)
+        }
+        Hint(model.blurb)
+        if (!fits) Hint("Probably too big for this phone's memory.", Palette.Error)
+        when {
+            loaded -> Text("Loaded and ready", style = MaterialTheme.typography.labelSmall, color = Palette.Success)
+            loading -> LinearProgressIndicator(Modifier.fillMaxWidth())
+            download != null -> {
+                LinearProgressIndicator(progress = { download.fraction }, modifier = Modifier.fillMaxWidth())
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Hint("${(download.fraction * 100).toInt()}% · ${formatBytes(download.downloadedBytes)} of ${formatBytes(model.sizeBytes)}")
+                    Spacer(Modifier.weight(1f))
+                    TextButton(onClick = { viewModel.cancelDownload(download.id) }) { Text("Cancel") }
+                }
+            }
+            downloaded -> Button(onClick = { viewModel.loadRecommended(model) }) { Text("Load") }
+            else -> Button(
+                onClick = { viewModel.downloadRecommended(model) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (highlight) Palette.Accent else Palette.SurfaceHigh,
+                    contentColor = if (highlight) Color.Black else Palette.Text
+                )
+            ) {
+                Icon(Icons.Filled.Download, null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text("Download")
+            }
+        }
+    }
 }
