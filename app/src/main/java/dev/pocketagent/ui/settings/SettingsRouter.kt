@@ -82,6 +82,7 @@ fun SettingsRouter(viewModel: AppViewModel, route: String, onRestartNeeded: () -
             "telegram" -> TelegramConnectorScreen(viewModel, back)
             "media" -> MediaStudioScreen(viewModel, back)
             "voice" -> VoiceSettingsScreen(viewModel, back)
+            "linux" -> LinuxScreen(viewModel, back)
             "env" -> EnvVarsScreen(viewModel, back)
             "permissions" -> PermissionsScreen(viewModel, back)
             "background" -> BackgroundScreen(viewModel, back)

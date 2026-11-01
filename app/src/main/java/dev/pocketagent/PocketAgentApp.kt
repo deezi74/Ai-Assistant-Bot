@@ -137,6 +137,7 @@ class AppContainer(val app: PocketAgentApp) {
     val places = PlacesClient(googleKey = { settings.googlePlacesKey })
     val googleAuth = GoogleAuth(app, settings)
     val termux = TermuxBridge(app)
+    val linux = dev.pocketagent.agent.LinuxEnvironment(app)
     val google = GoogleApi(googleAuth)
     val email = EmailClient(settings, googleAuth)
     val github = GitHubClient(token = { settings.githubToken })
@@ -164,6 +165,7 @@ class AppContainer(val app: PocketAgentApp) {
             OnlineOnlyTool(GoogleCalendarTool(google, { settings.current.calendarCanWrite }), offline),
             OnlineOnlyTool(GoogleDriveTool(google), offline),
             TermuxTool(termux) { settings.current.termuxEnabled },
+            dev.pocketagent.agent.LinuxTool(linux),
             OnlineOnlyTool(ChangeCharacterTool(characters, workspace, settings), offline),
             OnlineOnlyTool(ImagineTool(characters, workspace, settings) { session.turnImage }, offline),
             OnlineOnlyTool(dev.pocketagent.agent.MakeVideoTool(videos, workspace, settings) { session.turnImage }, offline),

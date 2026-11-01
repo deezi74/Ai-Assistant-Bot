@@ -184,6 +184,16 @@ fun ConnectorsScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             },
             connected = googleAccounts.isNotEmpty(), action = if (googleAccounts.isEmpty()) "Sign in" else "Manage"
         ) { viewModel.push("google") }
+        val linuxState by viewModel.linuxState.collectAsStateWithLifecycle()
+        ConnectorCard(
+            "Linux computer",
+            when (linuxState) {
+                is dev.pocketagent.agent.LinuxEnvironment.State.Ready -> "Installed · ${settings.assistantName} can run Linux commands, Python and Node"
+                is dev.pocketagent.agent.LinuxEnvironment.State.Installing -> "Installing…"
+                else -> "Not installed · a real Linux inside the app, no Termux needed"
+            },
+            connected = linuxState is dev.pocketagent.agent.LinuxEnvironment.State.Ready, action = "Set up"
+        ) { viewModel.push("linux") }
         ConnectorCard(
             "Voice",
             when (settings.voiceProvider) {
@@ -367,6 +377,66 @@ fun LocationConnectorScreen(viewModel: AppViewModel, onBack: () -> Unit) {
             SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) }
         }
     }
+}
+
+@Composable
+fun LinuxScreen(viewModel: AppViewModel, onBack: () -> Unit) {
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val state by viewModel.linuxState.collectAsStateWithLifecycle()
+    val output by viewModel.linuxOutput.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    var command by remember { mutableStateOf("") }
+    var removing by remember { mutableStateOf(false) }
+    val ready = state is dev.pocketagent.agent.LinuxEnvironment.State.Ready
+
+    SubScreen("Linux computer", onBack) {
+        Hint("A real Linux (Alpine) that lives inside TruAgent. ${settings.assistantName} can install packages, run Python, Node and shell scripts, use git and curl, and keep servers running. No root and no Termux needed. It's sealed off from your phone's files and other apps.")
+        when (val s = state) {
+            is dev.pocketagent.agent.LinuxEnvironment.State.NotInstalled -> {
+                if (!viewModel.linuxBundled) Hint("This phone isn't supported (needs a 64-bit ARM phone).", Palette.Error)
+                Button(
+                    onClick = { viewModel.installLinux() },
+                    enabled = viewModel.linuxBundled,
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+                ) { Text("Install Linux (about 300 MB with Python and Node)") }
+            }
+            is dev.pocketagent.agent.LinuxEnvironment.State.Installing -> Hint(s.step)
+            is dev.pocketagent.agent.LinuxEnvironment.State.Failed -> {
+                Hint("Install failed: ${s.message}", Palette.Error)
+                OutlinedButton(onClick = { viewModel.installLinux() }) { Text("Try again") }
+            }
+            is dev.pocketagent.agent.LinuxEnvironment.State.Ready -> Hint("Installed and ready.", Palette.Success)
+        }
+        if (ready) {
+            SectionTitle("Try a command")
+            androidx.compose.material3.OutlinedTextField(
+                value = command, onValueChange = { command = it }, singleLine = true,
+                label = { Text("Command, e.g. python3 --version") }, modifier = Modifier.fillMaxWidth()
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { viewModel.runLinux(command) }, enabled = command.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Palette.Accent, contentColor = Color.Black)
+                ) { Text("Run") }
+                OutlinedButton(onClick = { viewModel.runLinux("uname -a; cat /etc/alpine-release; df -h / | tail -1") }) { Text("System info") }
+            }
+        }
+        if (output.isNotBlank()) {
+            SurfaceCard(onClick = { copy(context, output) }) {
+                Text(output.takeLast(4000), fontFamily = Mono, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (ready) {
+            SectionTitle("Try saying")
+            listOf(
+                "Use your Linux computer to write a Python script that checks Bitcoin's price",
+                "Install ffmpeg in your Linux and tell me the version",
+                "Start a small web server in Linux and show me it works"
+            ).forEach { example -> SurfaceCard(onClick = { viewModel.prefill(example) }) { Text(example) } }
+            OutlinedButton(onClick = { removing = true }) { Text("Remove Linux") }
+        }
+    }
+    if (removing) ConfirmDialog("Remove Linux?", "Everything inside it (installed packages and files) is deleted.", "Remove", { viewModel.uninstallLinux() }, { removing = false })
 }
 
 @OptIn(ExperimentalLayoutApi::class, androidx.compose.material3.ExperimentalMaterial3Api::class)

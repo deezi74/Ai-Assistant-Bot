@@ -77,7 +77,7 @@
         android:largeHeap="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.PocketAgent"
-        android:extractNativeLibs="false"
+        android:extractNativeLibs="true"
         tools:targetApi="35">
 
         <activity

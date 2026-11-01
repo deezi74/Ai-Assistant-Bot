@@ -719,6 +719,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val hasPollinationsToken: Boolean get() = !container.settings.pollinationsToken.isNullOrBlank()
     val cloudVoice: dev.pocketagent.agent.CloudVoice get() = container.voice
+
+    // Built-in Linux
+    val linuxState get() = container.linux.state
+    val linuxBundled: Boolean get() = container.linux.engineBundled
+    private val _linuxOutput = MutableStateFlow("")
+    val linuxOutput: StateFlow<String> = _linuxOutput.asStateFlow()
+    fun installLinux() = viewModelScope.launch {
+        _linuxOutput.value = try { container.linux.install() } catch (e: Exception) { "Install failed: ${e.message}" }
+    }
+    fun uninstallLinux() {
+        container.linux.uninstall()
+        _linuxOutput.value = "Linux removed."
+    }
+    fun runLinux(command: String) = viewModelScope.launch {
+        _linuxOutput.value = "$ $command\n…"
+        _linuxOutput.value = "$ $command\n" + try { container.linux.run(command, 120_000) } catch (e: Exception) { "Error: ${e.message}" }
+    }
+    fun linuxSize(): Long = container.linux.diskUsage()
     val hasElevenLabsKey: Boolean get() = !container.settings.elevenLabsKey.isNullOrBlank()
     fun saveElevenLabsKey(key: String?) {
         container.settings.elevenLabsKey = key

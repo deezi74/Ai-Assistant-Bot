@@ -14,3 +14,5 @@ app/src/main/cpp/llama.cpp/
 *.apk
 *.gguf
 dist/
+app/src/main/jniLibs/arm64-v8a/libproot*.so
+app/src/main/jniLibs/arm64-v8a/libtalloc.so
